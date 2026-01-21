@@ -2,6 +2,8 @@
 
 import sys
 import uuid
+import os
+import io
 from typing import Optional
 from rich.console import Console
 from rich.panel import Panel
@@ -13,10 +15,59 @@ from rag.results_storage import ToolResultsStorage
 from ui.streaming_manager import StreamingManager
 from utils.input_normalizer import InputNormalizer
 from websearch.aggregator import SearchAggregator
-from rich.prompt import Prompt
 from api.conversation_api import ConversationAPI
 
+# Fix encoding for terminal input/output
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+# Fix stdin encoding if needed
+if hasattr(sys.stdin, 'buffer'):
+    try:
+        if sys.stdin.encoding != 'utf-8':
+            sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
+
 console = Console()
+
+
+def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
+    """Safely ask for user input with encoding error handling.
+    
+    Args:
+        prompt_text: Prompt text to display
+        default: Default value if user just presses Enter
+        
+    Returns:
+        User input string
+    """
+    try:
+        return Prompt.ask(prompt_text, default=default)
+    except (UnicodeDecodeError, UnicodeError) as e:
+        # Fallback to standard input with encoding fix
+        try:
+            if hasattr(sys.stdin, 'buffer'):
+                sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
+        except:
+            pass
+        
+        # Use standard input as fallback
+        if default:
+            result = input(f"{prompt_text} (default: {default}): ").strip()
+            return result if result else default
+        else:
+            return input(f"{prompt_text}: ").strip()
+    except Exception as e:
+        # Last resort fallback - use standard input
+        try:
+            if default:
+                result = input(f"{prompt_text} (default: {default}): ").strip()
+                return result if result else default
+            else:
+                return input(f"{prompt_text}: ").strip()
+        except Exception:
+            # Ultimate fallback - return default or empty
+            return default if default else ""
 
 
 def main():
@@ -37,7 +88,7 @@ def main():
     # Create interactive callback for asking user questions
     def ask_user_question(question: str) -> str:
         """Ask user a question and return their answer."""
-        return Prompt.ask(f"\n[bold yellow]❓ {question}[/bold yellow]")
+        return safe_prompt_ask(f"\n[bold yellow]❓ {question}[/bold yellow]")
     
     # Initialize Mistral for semantic understanding in input normalizer (replacing Qwen3)
     from models.generic_ollama_agent import GenericOllamaAgent
@@ -96,7 +147,7 @@ def main():
     console.print("4. Qwen2 Pentest (fine-tuned, recommended for pentest)")
     console.print("5. Custom Ollama model")
     
-    model_choice = Prompt.ask("\n[dim]Select model (1-5, default: 1)[/dim]", default="1")
+    model_choice = safe_prompt_ask("\n[dim]Select model (1-5, default: 1)[/dim]", default="1")
     
     model_map = {
         "1": "mistral:latest",
@@ -109,7 +160,7 @@ def main():
     selected_model = model_map.get(model_choice, "mistral:latest")
     
     if model_choice == "5":
-        selected_model = Prompt.ask("[dim]Enter Ollama model name (e.g., llama3.1:8b)[/dim]")
+        selected_model = safe_prompt_ask("[dim]Enter Ollama model name (e.g., llama3.1:8b)[/dim]")
     
     console.print(f"[green]✅ Using model: {selected_model}[/green]\n")
     
@@ -129,10 +180,10 @@ def main():
     console.print("3. Load existing conversation")
     console.print("4. Continue with new conversation (default)")
     
-    choice = Prompt.ask("\n[dim]Choice (1-4, default: 4)[/dim]", default="4")
+    choice = safe_prompt_ask("\n[dim]Choice (1-4, default: 4)[/dim]", default="4")
     
     if choice == "1":
-        title = Prompt.ask("[dim]Conversation title (optional)[/dim]", default="")
+        title = safe_prompt_ask("[dim]Conversation title (optional)[/dim]", default="")
         result = conversation_api.create_conversation(title=title if title else None)
         if result.get("success"):
             current_conversation_id = result["conversation_id"]
@@ -152,7 +203,7 @@ def main():
                     updated = conv.get("updated_at", "")[:10] if conv.get("updated_at") else ""
                     console.print(f"  {i}. {title} ({conv_id[:8]}...) - Updated: {updated}")
                 
-                load_choice = Prompt.ask("\n[dim]Load conversation number (or Enter to create new)[/dim]", default="")
+                load_choice = safe_prompt_ask("\n[dim]Load conversation number (or Enter to create new)[/dim]", default="")
                 if load_choice.isdigit():
                     idx = int(load_choice) - 1
                     if 0 <= idx < len(conversations):
@@ -174,7 +225,7 @@ def main():
             console.print(f"[red]❌ Failed to list conversations[/red]")
             current_conversation_id = memory_manager.start_conversation()
     elif choice == "3":
-        conv_id = Prompt.ask("[dim]Conversation ID[/dim]")
+        conv_id = safe_prompt_ask("[dim]Conversation ID[/dim]")
         if conv_id:
             switch_result = conversation_api.switch_conversation(conv_id, memory_manager)
             if switch_result.get("success"):
@@ -200,7 +251,7 @@ def main():
     try:
         while True:
             # Get user input
-            user_prompt = Prompt.ask("\n[bold green]You[/bold green]")
+            user_prompt = safe_prompt_ask("\n[bold green]You[/bold green]")
             
             if user_prompt.lower() in ["exit", "quit", "q"]:
                 console.print("\n[cyan]Goodbye![/cyan]")
@@ -342,7 +393,7 @@ def main():
                         console.print(f"  {i}. [cyan]{subtask.get('name', 'Tool execution')}[/cyan] - {tool_names}")
                     
                     console.print()
-                    approval_response = Prompt.ask(
+                    approval_response = safe_prompt_ask(
                         "[bold yellow]❓ Execute recommended tools?[/bold yellow] [dim](yes/no)[/dim]",
                         default="yes"
                     )
