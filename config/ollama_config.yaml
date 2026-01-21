@@ -49,3 +49,12 @@ models:
     top_k: 40
     num_predict: 512
     context_window: 32768
+  
+  # Fine-tuned Qwen2 model for pentest
+  qwen2_pentest:
+    model_name: "qwen2_pentest:latest"  # Adjust tag if different (e.g., "qwen2_pentest:v1")
+    temperature: 0.3  # Lower temperature for more focused responses
+    top_p: 0.9
+    top_k: 40
+    num_predict: 2048
+    context_window: 8192
