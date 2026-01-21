@@ -1,0 +1,69 @@
+# Model role assignments and configurations
+
+models:
+  mistral:
+    role: "task_analysis"
+    description: "Task analysis, breakdown user prompt thành subtasks, xác định tool/search/knowledge cần thiết"
+    use_cases:
+      - "Task breakdown and analysis"
+      - "Subtask generation"
+      - "Tool selection reasoning"
+      - "Answer synthesis"
+    config:
+      temperature: 0.85
+      top_p: 0.95
+      top_k: 50
+      num_predict: 2048
+      
+  deepseek_r1:
+    role: "web_search_synthesis"
+    description: "Web search orchestration, content extraction, cross-verification, answer synthesis"
+    use_cases:
+      - "Web search aggregation"
+      - "Content extraction and analysis"
+      - "Cross-source verification"
+      - "Answer synthesis from multiple sources"
+    config:
+      temperature: 0.7
+      top_p: 0.9
+      top_k: 40
+      num_predict: 4096
+      
+  functiongemma:
+    role: "function_calling"
+    description: "Function calling chuyên biệt, gọi security tools dựa trên semantic understanding"
+    use_cases:
+      - "Tool selection and calling"
+      - "Function parameter extraction"
+      - "Multi-turn tool execution"
+    config:
+      temperature: 0.0
+      top_p: 0.9
+      top_k: 40
+      num_predict: 512
+  
+  qwen2_pentest:
+    role: "task_analysis_and_tool_execution"
+    description: "Fine-tuned Qwen2 model chuyên biệt cho pentest, hỗ trợ cả task analysis và tool execution"
+    use_cases:
+      - "Task breakdown and analysis"
+      - "Subtask generation"
+      - "Tool selection and calling"
+      - "Function parameter extraction"
+      - "Answer synthesis"
+    config:
+      temperature: 0.3
+      top_p: 0.9
+      top_k: 40
+      num_predict: 2048
+
+# Model selection strategy
+selection:
+  default_model: "mistral:latest"  # Change to "qwen2_pentest:latest" to use as default
+  fallback_model: "deepseek_r1"
+  
+# Model availability check
+availability:
+  check_on_startup: true
+  retry_attempts: 3
+  retry_delay: 5

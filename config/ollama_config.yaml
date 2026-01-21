@@ -1,0 +1,51 @@
+# Ollama connection configuration
+# For remote server, set base_url to your server's Ollama endpoint
+# Example: "http://your-server-ip:11434" or "http://your-server-domain:11434"
+# You can also use environment variable OLLAMA_HOST to override this
+ollama:
+  base_url: "http://localhost:11434"  # Change to your server URL if needed
+  timeout: 300
+  verify_ssl: false
+  
+# Model configurations
+models:
+  mistral:
+    model_name: "mistral:latest"
+    temperature: 0.85
+    top_p: 0.95
+    top_k: 50
+    num_predict: 2048
+    context_window: 8192
+  
+  # Alternative models for general analysis (less refusal)
+  llama3_1_8b:
+    model_name: "llama3.1:8b"
+    temperature: 0.85
+    top_p: 0.95
+    top_k: 50
+    num_predict: 2048
+    context_window: 8192
+  
+  deepseek_v2_7b:
+    model_name: "deepseek-v2:7b"
+    temperature: 0.85
+    top_p: 0.95
+    top_k: 50
+    num_predict: 2048
+    context_window: 8192
+    
+  deepseek_r1:
+    model_name: "deepseek-r1:latest"
+    temperature: 0.7
+    top_p: 0.9
+    top_k: 40
+    num_predict: 4096
+    context_window: 16384
+    
+  functiongemma:
+    model_name: "functiongemma:270m"
+    temperature: 0.0
+    top_p: 0.9
+    top_k: 40
+    num_predict: 512
+    context_window: 32768

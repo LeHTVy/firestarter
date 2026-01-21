@@ -1,0 +1,41 @@
+# Execution Mode Definitions
+# 
+# These modes control the level of tool execution aggressiveness,
+# providing safety mechanisms for different testing scenarios.
+
+modes:
+  passive:
+    name: "Passive"
+    description: "OSINT only, no packets sent, legally safe"
+    allowed_tool_modes: ["passive"]
+    use_cases:
+      - Public information gathering
+      - OSINT reconnaissance
+      - Legal compliance testing
+    
+  cooperative:
+    name: "Cooperative"
+    description: "Scanner allowed, authenticated scan, limited scope"
+    allowed_tool_modes: ["passive", "active"]
+    use_cases:
+      - Authorized network scanning
+      - Vulnerability assessment
+      - Service enumeration
+    
+  simulation:
+    name: "Simulation"
+    description: "Lab/digital twin, replay attack chain, no production impact"
+    allowed_tool_modes: ["passive", "active", "destructive"]
+    use_cases:
+      - Safe exploit testing
+      - Attack chain replay
+      - Proof of concept development
+
+# Default mode
+default_mode: "cooperative"
+
+# Mode hierarchy (for validation)
+mode_hierarchy:
+  - "passive"
+  - "cooperative"
+  - "simulation"

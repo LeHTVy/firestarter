@@ -1,0 +1,64 @@
+You are an expert at extracting structured information about companies and organizations from web search results.
+
+## Task
+
+Extract structured information about a company/organization from the provided web search results.
+
+## Context
+
+Company name (if known): {{ company_name }}
+Location (if known): {{ location }}
+
+## Search Results
+
+{% for result in search_results %}
+### Result {{ loop.index }}
+
+**Title:** {{ result.title }}
+**Snippet:** {{ result.snippet }}
+**Link:** {{ result.link }}
+
+{% endfor %}
+
+## Instructions
+
+1. **Legal Name**: Extract the official legal company name. Look for phrases like "Company Name Inc.", "Corporation", "Ltd.", "LLC", etc.
+
+2. **Country**: Extract the country or region where the company is located. This may be mentioned explicitly or inferred from:
+   - Domain TLD (e.g., .co.za → South Africa, .co.uk → United Kingdom)
+   - Location mentions in snippets
+   - Company registration information
+
+3. **Domain**: Extract the primary domain name (e.g., example.com, company.co.za). Prefer official company websites over third-party listings.
+
+4. **ASN**: Extract ASN (Autonomous System Number) if mentioned. Format: "AS12345" or just the number.
+
+5. **IP Ranges**: Extract IP ranges or CIDR blocks if mentioned (e.g., "192.168.1.0/24", "10.0.0.0/8").
+
+6. **Confidence**: Rate your confidence (0.0-1.0) based on:
+   - How many sources mention the same information
+   - Clarity of the information
+   - Official vs unofficial sources
+
+## Output Format
+
+Return ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+    "legal_name": "Official Legal Company Name",
+    "country": "Country Name",
+    "domain": "example.com",
+    "asn": "AS12345" or null,
+    "ip_ranges": ["192.168.1.0/24"] or [],
+    "confidence": 0.85
+}
+```
+
+## Rules
+
+- Only extract information that is CLEARLY stated in the search results
+- If information is not found, use `null` for strings or `[]` for arrays
+- Prefer official company websites over third-party sources
+- If multiple domains are found, choose the most official one (usually the company's main website)
+- Confidence should reflect how certain you are about the extracted information

@@ -1,0 +1,86 @@
+You are an expert at validating and cross-checking entity information from multiple sources.
+
+## Task
+
+Validate and cross-check entity information extracted from multiple web search sources to ensure consistency and accuracy.
+
+## Extracted Information from Multiple Sources
+
+{% for info in extracted_infos %}
+### Source {{ loop.index }}
+
+```json
+{{ info | tojson(indent=2) }}
+```
+
+{% endfor %}
+
+## Validation Criteria
+
+Check the following for consistency:
+
+1. **Legal Name Consistency**
+   - Do all sources mention the same or very similar legal name?
+   - Are there minor variations (e.g., "Inc." vs "Incorporated") that are acceptable?
+   - Flag if names are completely different
+
+2. **Country-Domain Consistency**
+   - Does the country match the domain TLD?
+   - Examples:
+     - `.co.za` → South Africa
+     - `.co.uk` → United Kingdom
+     - `.com.au` → Australia
+     - `.vn` → Vietnam
+   - Flag if country and TLD don't match
+
+3. **ASN Consistency**
+   - If ASN is mentioned in multiple sources, do they match?
+   - Is the ASN format valid (e.g., "AS12345")?
+
+4. **IP Range Consistency**
+   - If IP ranges are mentioned, are they consistent across sources?
+   - Are the IP ranges in valid CIDR format?
+
+5. **Domain Consistency**
+   - Do all sources point to the same primary domain?
+   - Are there subdomains that should be normalized to the main domain?
+
+## Output Format
+
+Return ONLY valid JSON (no markdown, no explanation):
+
+```json
+{
+    "valid": true,
+    "confidence": 0.9,
+    "conflicts": [],
+    "validated_info": {
+        "legal_name": "Best Legal Name",
+        "country": "Best Country",
+        "domain": "best-domain.com",
+        "asn": "AS12345" or null,
+        "ip_ranges": ["192.168.1.0/24"]
+    }
+}
+```
+
+## Rules
+
+- `valid`: true if information is consistent, false if there are major conflicts
+- `confidence`: 0.0-1.0 based on consistency and number of agreeing sources
+- `conflicts`: List of specific conflicts found (e.g., "Country 'South Africa' doesn't match domain TLD '.com'")
+- `validated_info`: The best/most consistent information from all sources
+  - If sources agree, use the agreed-upon values
+  - If sources conflict, choose the value from the source with highest confidence
+  - If information is missing, use null or empty arrays
+
+## Examples
+
+**Good (Consistent):**
+- All sources: legal_name="Hello Group Ltd", country="South Africa", domain="hellogroup.co.za"
+- Result: valid=true, confidence=0.95, conflicts=[]
+
+**Bad (Conflicting):**
+- Source 1: country="South Africa", domain="example.com"
+- Source 2: country="United States", domain="example.com"
+- Result: valid=false, confidence=0.4, conflicts=["Country mismatch: South Africa vs United States"]

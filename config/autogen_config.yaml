@@ -1,0 +1,86 @@
+# AutoGen multi-agent configuration
+
+agents:
+  recon_agent:
+    name: "Recon Agent"
+    description: "Chuyên về reconnaissance tasks (network scanning, OSINT)"
+    model: "mistral"
+    fallback_model: "functiongemma"
+    system_prompt_file: "prompts/autogen_recon.jinja2"
+    tool_categories:
+      - "recon"
+      - "osint"
+    capabilities:
+      - "Network port scanning"
+      - "Service detection"
+      - "DNS enumeration"
+      - "Subdomain discovery"
+      - "OSINT gathering"
+      - "Technology detection"
+    max_iterations: 10
+    temperature: 0.7
+    
+  exploit_agent:
+    name: "Exploit Agent"
+    description: "Chuyên về exploit research và execution"
+    model: "deepseek_r1"
+    fallback_model: "mistral"
+    system_prompt_file: "prompts/autogen_exploit.jinja2"
+    tool_categories:
+      - "exploitation"
+      - "vulnerability"
+    capabilities:
+      - "Exploit research"
+      - "Vulnerability exploitation"
+      - "Payload generation"
+      - "Privilege escalation"
+      - "Post-exploitation"
+    max_iterations: 10
+    temperature: 0.5
+    
+  analysis_agent:
+    name: "Analysis Agent"
+    description: "Phân tích kết quả, vulnerability assessment"
+    model: "mistral"
+    fallback_model: "deepseek_r1"
+    system_prompt_file: "prompts/autogen_analysis.jinja2"
+    tool_categories:
+      - "malware_analysis"
+      - "threat_intel"
+      - "analysis"
+    capabilities:
+      - "Result analysis"
+      - "Vulnerability assessment"
+      - "Threat intelligence lookup"
+      - "IOC checking"
+      - "Log analysis"
+      - "Report generation"
+    max_iterations: 10
+    temperature: 0.7
+    
+  results_qa_agent:
+    name: "Results Q&A Agent"
+    description: "Trả lời câu hỏi về tool results đã chạy"
+    model: "mistral"
+    fallback_model: "deepseek_r1"
+    system_prompt_file: "prompts/results_qa.jinja2"
+    tool_categories: []
+    capabilities:
+      - "Query tool results from RAG"
+      - "Analyze tool execution results"
+      - "Compare results from multiple tools"
+      - "Extract insights and patterns"
+      - "Provide detailed explanations"
+    max_iterations: 5
+    temperature: 0.7
+
+# Agent coordination
+coordination:
+  max_concurrent_agents: 3
+  communication_protocol: "shared_state"
+  result_aggregation: "synthesizer"
+
+# Agent selection strategy
+selection:
+  strategy: "semantic_routing"
+  fallback: "round_robin"

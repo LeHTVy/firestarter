@@ -1,0 +1,48 @@
+Classify the user's intent for this penetration testing agent.
+
+User prompt: "{{ user_prompt }}"
+
+Classify as ONE of:
+- "question": User is asking for information, explanation, knowledge, or advice
+- "request": User is requesting an action to be performed (reconnaissance, scanning, exploitation, tool execution)
+
+Key distinctions with examples:
+
+"question" examples:
+- "What is SQL injection?" → question (seeking knowledge)
+- "How does X work?" → question (explanation request)
+- "Explain the results" → question (requesting analysis/explanation)
+- "What's next?" → question (asking for recommendation)
+- "Why did you recommend X?" → question (asking for justification)
+- "How do you know X is vulnerable?" → question (asking for explanation)
+- "Can you explain the output?" → question (requesting explanation)
+- "What are the risks?" → question (asking for analysis)
+
+"request" examples:
+- "scan example.com" → request (perform scanning action)
+- "assess hellogroup.co.za" → request (perform assessment action)
+- "attack target.com" → request (perform security testing)
+- "use whois on hellogroup.co.za" → request (direct tool execution command)
+- "run nmap on 192.168.1.1" → request (direct tool execution command)
+- "execute subfinder for example.com" → request (direct tool execution command)
+- "find subdomains for X" → request (perform reconnaissance action)
+- "test X for vulnerabilities" → request (perform testing action)
+- "check if X is vulnerable" → request (perform security check action)
+- "enumerate ports on Y" → request (perform enumeration action)
+- "perform recon on Z" → request (perform reconnaissance action)
+
+Important patterns:
+- Direct tool commands: "use X on Y", "run X for Y", "execute X on Y" → ALWAYS "request"
+- Action verbs at start: "scan", "test", "assess", "attack", "check", "run", "use", "execute" → Usually "request"
+- Question words: "what", "how", "why", "when", "where", "who" → Usually "question" (unless followed by action verb)
+- Imperative commands: "do X", "perform Y", "run Z" → "request"
+- Explanatory requests: "explain", "describe", "tell me about" → "question"
+
+Return your classification in JSON format:
+```json
+{
+  "intent": "question|request",
+  "confidence": 0.0-1.0,
+  "reasoning": "Brief explanation of why this classification was chosen, referencing the examples above"
+}
+```

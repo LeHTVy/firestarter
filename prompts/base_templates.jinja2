@@ -1,0 +1,57 @@
+{# Base templates for common prompt patterns #}
+
+{# Task breakdown template #}
+{% macro task_breakdown(user_prompt, context=None) %}
+Phân tích yêu cầu sau và breakdown thành subtasks:
+
+User Prompt: {{ user_prompt }}
+
+{% if context %}
+Context: {{ context }}
+{% endif %}
+{% endmacro %}
+
+{# Tool selection template #}
+{% macro tool_selection(subtask, available_tools) %}
+Dựa trên subtask sau, chọn tool phù hợp:
+
+Subtask: {{ subtask }}
+
+Available Tools:
+{% for tool in available_tools %}
+- {{ tool.name }}: {{ tool.description }}
+{% endfor %}
+{% endmacro %}
+
+{# Result synthesis template #}
+{% macro result_synthesis(tool_results, search_results, knowledge_results) %}
+Tổng hợp kết quả từ các nguồn sau:
+
+{% if tool_results %}
+Tool Results:
+{{ tool_results }}
+{% endif %}
+
+{% if search_results %}
+Web Search Results:
+{{ search_results }}
+{% endif %}
+
+{% if knowledge_results %}
+Knowledge Base Results:
+{{ knowledge_results }}
+{% endif %}
+{% endmacro %}
+
+{# Error handling template #}
+{% macro error_handling(error, context=None) %}
+Đã xảy ra lỗi:
+
+Error: {{ error }}
+
+{% if context %}
+Context: {{ context }}
+{% endif %}
+
+Vui lòng xử lý lỗi và đề xuất giải pháp.
+{% endmacro %}

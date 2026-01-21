@@ -1,0 +1,4925 @@
+{
+  "version": "1.1.0",
+  "tools": [
+    {
+      "name": "nmap_scan",
+      "description": "Performs comprehensive network port scanning and service detection using Nmap",
+      "category": "recon",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "implementation": "tools.implementations.nmap_tool.execute",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "IP address or hostname to scan"
+          },
+          "ports": {
+            "type": "string",
+            "description": "Port range or specific ports"
+          },
+          "options": {
+            "type": "string",
+            "description": "Additional nmap options"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "metasploit_exploit",
+      "description": "Execute Metasploit exploit modules",
+      "category": "exploitation",
+      "priority": true,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "implementation": "tools.implementations.metasploit_tool.execute",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string",
+            "description": "Metasploit module name"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target IP or hostname"
+          },
+          "options": {
+            "type": "object",
+            "description": "Module-specific options"
+          }
+        },
+        "required": [
+          "module",
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": true
+    },
+    {
+      "name": "shodan_search",
+      "description": "Search Shodan for internet-connected devices and services",
+      "category": "osint",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "implementation": "tools.implementations.shodan_tool.search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Shodan search query"
+          },
+          "filters": {
+            "type": "object",
+            "description": "Additional search filters"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": true
+    },
+    {
+      "name": "virustotal_scan",
+      "description": "Scan file, URL, or hash with VirusTotal",
+      "category": "malware_analysis",
+      "priority": true,
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "implementation": "tools.implementations.virustotal_tool.scan",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "File hash, URL, or IP address"
+          },
+          "resource_type": {
+            "type": "string",
+            "enum": [
+              "hash",
+              "url",
+              "ip"
+            ],
+            "description": "Type of resource"
+          }
+        },
+        "required": [
+          "resource",
+          "resource_type"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": true
+    },
+    {
+      "name": "web_search",
+      "description": "Search the web using SerpAPI for security information, vulnerabilities, and threat intelligence",
+      "category": "osint",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent",
+        "analysis_agent"
+      ],
+      "implementation": "websearch.serpapi_client.search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "num_results": {
+            "type": "integer",
+            "description": "Number of results to return",
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": true
+    },
+    {
+      "name": "dns_enum",
+      "description": "Enumerate DNS records for a domain",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain name to enumerate"
+          },
+          "record_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "DNS record types to query"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "subdomain_discovery",
+      "description": "Discover subdomains for a target domain",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Target domain"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "dns",
+              "bruteforce",
+              "certificate"
+            ],
+            "description": "Discovery method"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "whois_lookup",
+      "description": "Perform WHOIS lookup for domain or IP",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Domain or IP address"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "ssl_cert_scan",
+      "description": "Scan SSL/TLS certificates for vulnerabilities",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Hostname or IP"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Port number",
+            "default": 443
+          }
+        },
+        "required": [
+          "host"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "http_header_analysis",
+      "description": "Analyze HTTP headers for security issues",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL to analyze"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "directory_bruteforce",
+      "description": "Brute force directory and file discovery",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Base URL"
+          },
+          "wordlist": {
+            "type": "string",
+            "description": "Wordlist file path"
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File extensions to check"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "sql_injection_test",
+      "description": "Test for SQL injection vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "description": "HTTP method"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "xss_test",
+      "description": "Test for Cross-Site Scripting (XSS) vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "command_injection_test",
+      "description": "Test for command injection vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "file_upload_test",
+      "description": "Test file upload functionality for vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Upload endpoint URL"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to test file"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "csrf_test",
+      "description": "Test for Cross-Site Request Forgery (CSRF) vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP method to test"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "ssrf_test",
+      "description": "Test for Server-Side Request Forgery (SSRF) vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "xxe_test",
+      "description": "Test for XML External Entity (XXE) vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "xml_payload": {
+            "type": "string",
+            "description": "XML payload to test"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "ldap_injection_test",
+      "description": "Test for LDAP injection vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "path_traversal_test",
+      "description": "Test for path traversal vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "deserialization_test",
+      "description": "Test for insecure deserialization vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "data_format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "xml",
+              "yaml"
+            ],
+            "description": "Data format"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "api_fuzzing",
+      "description": "Fuzz API endpoints for vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "description": "API endpoint URL"
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP method"
+          },
+          "payloads": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fuzzing payloads"
+          }
+        },
+        "required": [
+          "endpoint"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "password_crack",
+      "description": "Crack password hashes using various methods",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "Password hash"
+          },
+          "hash_type": {
+            "type": "string",
+            "description": "Hash algorithm"
+          },
+          "wordlist": {
+            "type": "string",
+            "description": "Wordlist file path"
+          }
+        },
+        "required": [
+          "hash",
+          "hash_type"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "brute_force_login",
+      "description": "Brute force login credentials",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Login endpoint URL"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username or username list"
+          },
+          "password_list": {
+            "type": "string",
+            "description": "Password wordlist path"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "session_hijack",
+      "description": "Test for session hijacking vulnerabilities",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "session_token": {
+            "type": "string",
+            "description": "Session token to test"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "privilege_escalation_check",
+      "description": "Check for privilege escalation vulnerabilities",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target system"
+          },
+          "current_user": {
+            "type": "string",
+            "description": "Current user context"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": true
+    },
+    {
+      "name": "reverse_shell",
+      "description": "Generate and deploy reverse shell payload",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target IP"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Listener port"
+          },
+          "shell_type": {
+            "type": "string",
+            "enum": [
+              "bash",
+              "python",
+              "powershell"
+            ],
+            "description": "Shell type"
+          }
+        },
+        "required": [
+          "target",
+          "port"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "payload_generator",
+      "description": "Generate exploit payloads",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "payload_type": {
+            "type": "string",
+            "enum": [
+              "reverse_shell",
+              "bind_shell",
+              "web_shell"
+            ],
+            "description": "Payload type"
+          },
+          "target_os": {
+            "type": "string",
+            "description": "Target operating system"
+          },
+          "arch": {
+            "type": "string",
+            "description": "Target architecture"
+          }
+        },
+        "required": [
+          "payload_type"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "log_analyzer",
+      "description": "Analyze log files for security events and anomalies",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "log_file": {
+            "type": "string",
+            "description": "Path to log file"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Search pattern"
+          },
+          "time_range": {
+            "type": "object",
+            "description": "Time range filter"
+          }
+        },
+        "required": [
+          "log_file"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "ioc_checker",
+      "description": "Check Indicators of Compromise (IOC) against threat intelligence",
+      "category": "threat_intel",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ioc": {
+            "type": "string",
+            "description": "IOC value (IP, hash, domain, etc.)"
+          },
+          "ioc_type": {
+            "type": "string",
+            "enum": [
+              "ip",
+              "hash",
+              "domain",
+              "url"
+            ],
+            "description": "IOC type"
+          }
+        },
+        "required": [
+          "ioc",
+          "ioc_type"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "threat_intel_lookup",
+      "description": "Lookup threat intelligence information",
+      "category": "threat_intel",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "indicator": {
+            "type": "string",
+            "description": "Threat indicator"
+          },
+          "source": {
+            "type": "string",
+            "description": "Threat intelligence source"
+          }
+        },
+        "required": [
+          "indicator"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "malware_analysis",
+      "description": "Analyze malware samples",
+      "category": "malware_analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to malware sample"
+          },
+          "analysis_type": {
+            "type": "string",
+            "enum": [
+              "static",
+              "dynamic",
+              "both"
+            ],
+            "description": "Analysis type"
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "network_traffic_analysis",
+      "description": "Analyze network traffic captures",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pcap_file": {
+            "type": "string",
+            "description": "Path to PCAP file"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Packet filter"
+          }
+        },
+        "required": [
+          "pcap_file"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "vulnerability_scanner",
+      "description": "Scan for known vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target IP or hostname"
+          },
+          "scan_type": {
+            "type": "string",
+            "enum": [
+              "full",
+              "quick",
+              "custom"
+            ],
+            "description": "Scan type"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "cve_lookup",
+      "description": "Lookup CVE information and details",
+      "category": "threat_intel",
+      "assigned_agents": [
+        "analysis_agent",
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cve_id": {
+            "type": "string",
+            "description": "CVE identifier"
+          },
+          "product": {
+            "type": "string",
+            "description": "Affected product"
+          }
+        },
+        "required": [
+          "cve_id"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "exploit_search",
+      "description": "Search for available exploits",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cve_id": {
+            "type": "string",
+            "description": "CVE identifier"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Target platform"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "port_scan",
+      "description": "Scan specific ports on target",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target IP or hostname"
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Ports to scan"
+          }
+        },
+        "required": [
+          "target",
+          "ports"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "service_detection",
+      "description": "Detect services running on ports",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target IP or hostname"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Port number"
+          }
+        },
+        "required": [
+          "target",
+          "port"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "os_detection",
+      "description": "Detect operating system of target",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target IP or hostname"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "banner_grabbing",
+      "description": "Grab service banners",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target IP or hostname"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Port number"
+          }
+        },
+        "required": [
+          "target",
+          "port"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "email_harvesting",
+      "description": "Harvest email addresses from target",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Target domain"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "web",
+              "dns",
+              "social"
+            ],
+            "description": "Harvesting method"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "social_media_recon",
+      "description": "Reconnaissance on social media platforms",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target username or organization"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Social media platform"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "github_recon",
+      "description": "Reconnaissance on GitHub repositories",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "type": "string",
+            "description": "GitHub organization or username"
+          },
+          "search_query": {
+            "type": "string",
+            "description": "Search query"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "certificate_transparency",
+      "description": "Query certificate transparency logs",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Target domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "ip_geolocation",
+      "description": "Get geolocation information for IP address",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string",
+            "description": "IP address"
+          }
+        },
+        "required": [
+          "ip"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "reverse_ip_lookup",
+      "description": "Find domains hosted on same IP",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string",
+            "description": "IP address"
+          }
+        },
+        "required": [
+          "ip"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "breach_check",
+      "description": "Check if email or username appears in data breaches",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Email address or username"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "password_leak_check",
+      "description": "Check if password has been leaked",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Password to check"
+          }
+        },
+        "required": [
+          "password"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "web_archive_search",
+      "description": "Search web archives for historical content",
+      "category": "osint",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL to search"
+          },
+          "date_range": {
+            "type": "object",
+            "description": "Date range filter"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "robots_txt_check",
+      "description": "Check robots.txt file for sensitive paths",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Base URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "sitemap_analysis",
+      "description": "Analyze sitemap.xml for discovery",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Base URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "technology_detection",
+      "description": "Detect technologies used by target",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "waf_detection",
+      "description": "Detect Web Application Firewall (WAF)",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "cms_detection",
+      "description": "Detect Content Management System (CMS)",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "api_endpoint_discovery",
+      "description": "Discover API endpoints",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Base URL"
+          },
+          "api_doc_url": {
+            "type": "string",
+            "description": "API documentation URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "graphql_introspection",
+      "description": "Perform GraphQL introspection",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "GraphQL endpoint URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "jwt_analysis",
+      "description": "Analyze JWT tokens for vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT token"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "oauth_test",
+      "description": "Test OAuth implementation for vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "OAuth endpoint URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "open_redirect_test",
+      "description": "Test for open redirect vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "idor_test",
+      "description": "Test for Insecure Direct Object Reference (IDOR) vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "object_id": {
+            "type": "string",
+            "description": "Object identifier"
+          }
+        },
+        "required": [
+          "url",
+          "object_id"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "rate_limit_test",
+      "description": "Test rate limiting mechanisms",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "requests_per_second": {
+            "type": "integer",
+            "description": "Requests per second"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "clickjacking_test",
+      "description": "Test for clickjacking vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "host_header_injection",
+      "description": "Test for Host header injection",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "http_parameter_pollution",
+      "description": "Test for HTTP parameter pollution",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Parameters to test"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "template_injection_test",
+      "description": "Test for template injection vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "template_engine": {
+            "type": "string",
+            "description": "Template engine type"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "race_condition_test",
+      "description": "Test for race condition vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "concurrent_requests": {
+            "type": "integer",
+            "description": "Number of concurrent requests"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "business_logic_test",
+      "description": "Test for business logic vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "test_scenario": {
+            "type": "string",
+            "description": "Test scenario"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "file_inclusion_test",
+      "description": "Test for file inclusion vulnerabilities (LFI/RFI)",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          },
+          "inclusion_type": {
+            "type": "string",
+            "enum": [
+              "lfi",
+              "rfi"
+            ],
+            "description": "Inclusion type"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "code_injection_test",
+      "description": "Test for code injection vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          },
+          "language": {
+            "type": "string",
+            "description": "Target language"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "nosql_injection_test",
+      "description": "Test for NoSQL injection vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          },
+          "db_type": {
+            "type": "string",
+            "description": "Database type"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "xpath_injection_test",
+      "description": "Test for XPath injection vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "xxe_blind_test",
+      "description": "Test for blind XXE vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "xml_payload": {
+            "type": "string",
+            "description": "XML payload"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "websocket_test",
+      "description": "Test WebSocket connections for vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "WebSocket URL"
+          },
+          "message": {
+            "type": "string",
+            "description": "Test message"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "dns_rebinding",
+      "description": "Test for DNS rebinding vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Target domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "subdomain_takeover",
+      "description": "Test for subdomain takeover vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subdomain": {
+            "type": "string",
+            "description": "Subdomain to test"
+          }
+        },
+        "required": [
+          "subdomain"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "cache_poisoning_test",
+      "description": "Test for cache poisoning vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "http_smuggling_test",
+      "description": "Test for HTTP request smuggling",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "pipeline_test",
+      "description": "Test for HTTP/2 pipeline vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "desync_attack",
+      "description": "Test for HTTP desynchronization attacks",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "time_based_blind_sqli",
+      "description": "Test for time-based blind SQL injection",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "boolean_blind_sqli",
+      "description": "Test for boolean-based blind SQL injection",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "union_based_sqli",
+      "description": "Test for union-based SQL injection",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "error_based_sqli",
+      "description": "Test for error-based SQL injection",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "stored_xss",
+      "description": "Test for stored XSS vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "reflected_xss",
+      "description": "Test for reflected XSS vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "dom_xss",
+      "description": "Test for DOM-based XSS vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "mutation_xss",
+      "description": "Test for mutation XSS vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "prototype_pollution",
+      "description": "Test for prototype pollution vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Parameter to test"
+          }
+        },
+        "required": [
+          "url",
+          "parameter"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "dom_clobbering",
+      "description": "Test for DOM clobbering vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "postmessage_vuln",
+      "description": "Test postMessage for vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "webhook_test",
+      "description": "Test webhook endpoints for vulnerabilities",
+      "category": "vulnerability",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Webhook URL"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Test payload"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "api_key_extraction",
+      "description": "Attempt to extract API keys from various sources",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target URL or repository"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "secret_scanning",
+      "description": "Scan for exposed secrets and credentials",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target to scan"
+          },
+          "secret_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Types of secrets to scan for"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "credential_stuffing",
+      "description": "Perform credential stuffing attack",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Login endpoint"
+          },
+          "credential_list": {
+            "type": "string",
+            "description": "Path to credential list"
+          }
+        },
+        "required": [
+          "url",
+          "credential_list"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "session_fixation",
+      "description": "Test for session fixation vulnerabilities",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "session_replay",
+      "description": "Test session replay attacks",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_token": {
+            "type": "string",
+            "description": "Session token"
+          },
+          "url": {
+            "type": "string",
+            "description": "Target URL"
+          }
+        },
+        "required": [
+          "url",
+          "session_token"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "jwt_crack",
+      "description": "Attempt to crack JWT tokens",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT token"
+          },
+          "wordlist": {
+            "type": "string",
+            "description": "Wordlist path"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "hash_crack",
+      "description": "Crack various hash types",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "hash": {
+            "type": "string",
+            "description": "Hash to crack"
+          },
+          "hash_type": {
+            "type": "string",
+            "description": "Hash algorithm"
+          },
+          "wordlist": {
+            "type": "string",
+            "description": "Wordlist path"
+          }
+        },
+        "required": [
+          "hash",
+          "hash_type"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "kerberos_attack",
+      "description": "Perform Kerberos-based attacks",
+      "category": "exploitation",
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target domain"
+          },
+          "attack_type": {
+            "type": "string",
+            "enum": [
+              "asreproast",
+              "kerberoast"
+            ],
+            "description": "Attack type"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": true
+    },
+    {
+      "name": "ldap_enum",
+      "description": "Enumerate LDAP directory",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "LDAP server"
+          },
+          "base_dn": {
+            "type": "string",
+            "description": "Base DN"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "smb_enum",
+      "description": "Enumerate SMB shares",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target IP"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username"
+          },
+          "password": {
+            "type": "string",
+            "description": "Password"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "ftp_enum",
+      "description": "Enumerate FTP server",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "FTP server"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username"
+          },
+          "password": {
+            "type": "string",
+            "description": "Password"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "ssh_enum",
+      "description": "Enumerate SSH service",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "SSH server"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "rdp_enum",
+      "description": "Enumerate RDP service",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "RDP server"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "mysql_enum",
+      "description": "Enumerate MySQL database",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "MySQL server"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username"
+          },
+          "password": {
+            "type": "string",
+            "description": "Password"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "postgres_enum",
+      "description": "Enumerate PostgreSQL database",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "PostgreSQL server"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username"
+          },
+          "password": {
+            "type": "string",
+            "description": "Password"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "mongodb_enum",
+      "description": "Enumerate MongoDB database",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "MongoDB server"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "redis_enum",
+      "description": "Enumerate Redis server",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Redis server"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "elasticsearch_enum",
+      "description": "Enumerate Elasticsearch cluster",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Elasticsearch server"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "docker_enum",
+      "description": "Enumerate Docker containers and images",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Docker host"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "kubernetes_enum",
+      "description": "Enumerate Kubernetes cluster",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Kubernetes API endpoint"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "aws_enum",
+      "description": "Enumerate AWS resources",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "access_key": {
+            "type": "string",
+            "description": "AWS access key"
+          },
+          "secret_key": {
+            "type": "string",
+            "description": "AWS secret key"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "medium",
+      "requires_auth": true
+    },
+    {
+      "name": "azure_enum",
+      "description": "Enumerate Azure resources",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Azure tenant ID"
+          },
+          "client_id": {
+            "type": "string",
+            "description": "Azure client ID"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "medium",
+      "requires_auth": true
+    },
+    {
+      "name": "gcp_enum",
+      "description": "Enumerate Google Cloud Platform resources",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "description": "GCP project ID"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "medium",
+      "requires_auth": true
+    },
+    {
+      "name": "yara_scan",
+      "description": "Scan files using YARA rules",
+      "category": "malware_analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to file to scan"
+          },
+          "rules_file": {
+            "type": "string",
+            "description": "Path to YARA rules file"
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "sandbox_analysis",
+      "description": "Analyze file in sandbox environment",
+      "category": "malware_analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to file"
+          },
+          "sandbox_type": {
+            "type": "string",
+            "enum": [
+              "cuckoo",
+              "vm"
+            ],
+            "description": "Sandbox type"
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "packet_capture",
+      "description": "Capture network packets",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "description": "Network interface"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Packet filter"
+          },
+          "duration": {
+            "type": "integer",
+            "description": "Capture duration in seconds"
+          }
+        },
+        "required": [
+          "interface"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "tcpdump_analysis",
+      "description": "Analyze tcpdump capture files",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pcap_file": {
+            "type": "string",
+            "description": "Path to PCAP file"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Packet filter"
+          }
+        },
+        "required": [
+          "pcap_file"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "wireshark_analysis",
+      "description": "Analyze Wireshark capture files",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pcap_file": {
+            "type": "string",
+            "description": "Path to PCAP file"
+          },
+          "display_filter": {
+            "type": "string",
+            "description": "Display filter"
+          }
+        },
+        "required": [
+          "pcap_file"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "suricata_analysis",
+      "description": "Analyze Suricata alert logs",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "log_file": {
+            "type": "string",
+            "description": "Path to Suricata log file"
+          },
+          "alert_level": {
+            "type": "string",
+            "description": "Minimum alert level"
+          }
+        },
+        "required": [
+          "log_file"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "snort_analysis",
+      "description": "Analyze Snort alert logs",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "log_file": {
+            "type": "string",
+            "description": "Path to Snort log file"
+          },
+          "alert_level": {
+            "type": "string",
+            "description": "Minimum alert level"
+          }
+        },
+        "required": [
+          "log_file"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "zeek_analysis",
+      "description": "Analyze Zeek (Bro) logs",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "log_directory": {
+            "type": "string",
+            "description": "Path to Zeek log directory"
+          },
+          "log_type": {
+            "type": "string",
+            "description": "Type of log to analyze"
+          }
+        },
+        "required": [
+          "log_directory"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "siem_query",
+      "description": "Query SIEM for security events",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SIEM query"
+          },
+          "time_range": {
+            "type": "object",
+            "description": "Time range"
+          },
+          "siem_type": {
+            "type": "string",
+            "enum": [
+              "splunk",
+              "elastic",
+              "qradar"
+            ],
+            "description": "SIEM type"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": true
+    },
+    {
+      "name": "threat_hunting",
+      "description": "Perform threat hunting queries",
+      "category": "threat_intel",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Threat hunting query"
+          },
+          "data_source": {
+            "type": "string",
+            "description": "Data source"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "ioc_enrichment",
+      "description": "Enrich Indicators of Compromise with threat intelligence",
+      "category": "threat_intel",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ioc": {
+            "type": "string",
+            "description": "IOC value"
+          },
+          "ioc_type": {
+            "type": "string",
+            "description": "IOC type"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Threat intelligence sources"
+          }
+        },
+        "required": [
+          "ioc",
+          "ioc_type"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "mitre_attack_mapping",
+      "description": "Map findings to MITRE ATT&CK framework",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "finding": {
+            "type": "string",
+            "description": "Security finding"
+          },
+          "technique_id": {
+            "type": "string",
+            "description": "MITRE ATT&CK technique ID"
+          }
+        },
+        "required": [
+          "finding"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "kill_chain_analysis",
+      "description": "Analyze attack using cyber kill chain",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "attack_data": {
+            "type": "object",
+            "description": "Attack data"
+          },
+          "stage": {
+            "type": "string",
+            "description": "Kill chain stage"
+          }
+        },
+        "required": [
+          "attack_data"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "risk_assessment",
+      "description": "Perform risk assessment",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "vulnerabilities": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "List of vulnerabilities"
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "List of assets"
+          }
+        },
+        "required": [
+          "vulnerabilities"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "compliance_check",
+      "description": "Check compliance with security standards",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "standard": {
+            "type": "string",
+            "enum": [
+              "iso27001",
+              "nist",
+              "pci_dss",
+              "hipaa"
+            ],
+            "description": "Compliance standard"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target to check"
+          }
+        },
+        "required": [
+          "standard",
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "penetration_test_report",
+      "description": "Generate penetration test report",
+      "category": "analysis",
+      "assigned_agents": [
+        "analysis_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Security findings"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "html",
+              "markdown"
+            ],
+            "description": "Report format"
+          }
+        },
+        "required": [
+          "findings"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "httpx",
+      "description": "Fast HTTP probing with tech detection",
+      "category": "recon",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "nmap",
+      "description": "Network port scanner with service detection",
+      "category": "recon",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Count"
+          },
+          "ports": {
+            "type": "array",
+            "description": "Ports"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "masscan",
+      "description": "Fast port scanner for large ranges",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ports": {
+            "type": "array",
+            "description": "Ports"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "subfinder",
+      "description": "Fast subdomain discovery tool",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "amass",
+      "description": "In-depth subdomain enumeration",
+      "category": "recon",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "whois",
+      "description": "Domain/IP registration lookup",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "dig",
+      "description": "DNS query tool",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "theHarvester",
+      "description": "Email and subdomain harvesting",
+      "category": "osint",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "bbot",
+      "description": "Recursive internet scanner with subdomain enum",
+      "category": "recon",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "katana",
+      "description": "Fast web crawler for endpoint discovery",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "cloudflared",
+      "description": "Cloudflare tunnel and DNS utilities",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "nuclei",
+      "description": "Fast template-based vulnerability scanner",
+      "category": "vulnerability",
+      "priority": true,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "nikto",
+      "description": "Web server vulnerability scanner",
+      "category": "vulnerability",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Host"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Port"
+          }
+        },
+        "required": [
+          "host"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "sqlmap",
+      "description": "Automatic SQL injection detection and exploitation",
+      "category": "exploitation",
+      "priority": true,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "gobuster",
+      "description": "Directory and DNS brute-forcing",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          },
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "domain",
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "ffuf",
+      "description": "Fast web fuzzer",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "msfconsole",
+      "description": "Metasploit Framework - exploitation and post-exploitation",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Command"
+          },
+          "module": {
+            "type": "string",
+            "description": "Module"
+          },
+          "query": {
+            "type": "string",
+            "description": "Query"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "query",
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "msfvenom",
+      "description": "Generate payloads for various platforms",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "description": "Format"
+          },
+          "lhost": {
+            "type": "string",
+            "description": "Lhost"
+          },
+          "lport": {
+            "type": "integer",
+            "description": "Lport"
+          },
+          "payload": {
+            "type": "string",
+            "description": "Payload"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "msfrpcd",
+      "description": "Metasploit RPC daemon for API access",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Password"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "searchsploit",
+      "description": "Search Exploit-DB for known exploits",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "exploit_id": {
+            "type": "string",
+            "description": "Exploit Id"
+          },
+          "query": {
+            "type": "string",
+            "description": "Query"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "hydra",
+      "description": "Fast network login cracker (SSH, FTP, HTTP, etc.)",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "fail_msg": {
+            "type": "string",
+            "description": "Fail Msg"
+          },
+          "form": {
+            "type": "string",
+            "description": "Form"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          },
+          "user": {
+            "type": "string",
+            "description": "User"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "medusa",
+      "description": "Speedy parallel network login auditor",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          },
+          "user": {
+            "type": "string",
+            "description": "User"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "cpanelbrute",
+      "description": "Dedicated cPanel/WHM brute force tool",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          },
+          "user": {
+            "type": "string",
+            "description": "User"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "passgen",
+      "description": "Smart targeted password generator based on company/keywords",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "company": {
+            "type": "string",
+            "description": "Company"
+          },
+          "keywords": {
+            "type": "string",
+            "description": "Keywords"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "credcheck",
+      "description": "Check credentials against leaked databases (HaveIBeenPwned)",
+      "category": "osint",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email"
+          },
+          "password": {
+            "type": "string",
+            "description": "Password"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "john",
+      "description": "John the Ripper password cracker",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "description": "Format"
+          },
+          "hashfile": {
+            "type": "string",
+            "description": "Hashfile"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "hashcat",
+      "description": "Advanced GPU-based password recovery",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "hashfile": {
+            "type": "string",
+            "description": "Hashfile"
+          },
+          "mode": {
+            "type": "string",
+            "description": "Mode"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "crackmapexec",
+      "description": "Swiss army knife for pentesting AD environments",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Password"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          },
+          "user": {
+            "type": "string",
+            "description": "User"
+          },
+          "userlist": {
+            "type": "string",
+            "description": "Userlist"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "wfuzz",
+      "description": "Web application bruteforcer and fuzzer",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "param": {
+            "type": "string",
+            "description": "Param"
+          },
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "feroxbuster",
+      "description": "Fast, recursive content discovery tool",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "wpscan",
+      "description": "WordPress vulnerability scanner",
+      "category": "vulnerability",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          },
+          "users": {
+            "type": "string",
+            "description": "Users"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "whatweb",
+      "description": "Next generation web scanner",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "wafw00f",
+      "description": "Web Application Firewall detection tool",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "arjun",
+      "description": "HTTP parameter discovery suite",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "dirsearch",
+      "description": "Web path scanner",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "extensions": {
+            "type": "array",
+            "description": "Extensions"
+          },
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "nc",
+      "description": "Netcat - read/write network connections",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Host"
+          },
+          "port": {
+            "type": "integer",
+            "description": "Port"
+          },
+          "port_range": {
+            "type": "string",
+            "description": "Port Range"
+          }
+        },
+        "required": [
+          "host"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "responder",
+      "description": "LLMNR, NBT-NS and MDNS poisoner",
+      "category": "exploitation",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "description": "Interface"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "high",
+      "requires_auth": false
+    },
+    {
+      "name": "tcpdump",
+      "description": "Network packet analyzer",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Count"
+          },
+          "interface": {
+            "type": "string",
+            "description": "Interface"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "enum4linux",
+      "description": "Windows/Samba enumeration tool",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "nbtscan",
+      "description": "NetBIOS name scanner",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "smbclient",
+      "description": "SMB/CIFS client for Windows shares",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Password"
+          },
+          "share": {
+            "type": "string",
+            "description": "Share"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          },
+          "user": {
+            "type": "string",
+            "description": "User"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "shodan",
+      "description": "Search engine for Internet-connected devices",
+      "category": "osint",
+      "priority": true,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          },
+          "query": {
+            "type": "string",
+            "description": "Query"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "domain",
+          "query",
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": true
+    },
+    {
+      "name": "securitytrails",
+      "description": "SecurityTrails API: Historical DNS records, origin IP discovery (BEST for CDN/WAF bypass). Find pre-Cloudflare IPs.",
+      "category": "osint",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": true
+    },
+    {
+      "name": "dnsrecon",
+      "description": "DNS enumeration and reconnaissance",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "recon-ng",
+      "description": "Full-featured OSINT reconnaissance framework",
+      "category": "osint",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "fierce",
+      "description": "DNS reconnaissance tool",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "spiderfoot",
+      "description": "OSINT automation tool",
+      "category": "osint",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Target"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "emailharvester",
+      "description": "Email address harvesting tool",
+      "category": "osint",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "clatscope",
+      "description": "ClatScope OSINT: IP lookup, WHOIS, DNS, subdomains, SSL certs, email breach, phone lookup, origin IP discovery (CDN bypass via historical DNS + wayback)",
+      "category": "osint",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email"
+          },
+          "ip": {
+            "type": "string",
+            "description": "Ip"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone"
+          },
+          "target": {
+            "type": "string",
+            "description": "Target"
+          },
+          "url": {
+            "type": "string",
+            "description": "Url"
+          }
+        },
+        "required": [
+          "domain",
+          "ip",
+          "target",
+          "url"
+        ]
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "trufflehog",
+      "description": "Find leaked credentials in git repos",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "org": {
+            "type": "string",
+            "description": "Org"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path"
+          },
+          "repo_url": {
+            "type": "string",
+            "description": "Repo Url"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "gitleaks",
+      "description": "Scan git repos for secrets and keys",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "trivy",
+      "description": "Vulnerability scanner for containers and IaC",
+      "category": "vulnerability",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "Image"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path"
+          },
+          "repo_url": {
+            "type": "string",
+            "description": "Repo Url"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "prowler",
+      "description": "AWS Security best practices checker",
+      "category": "vulnerability",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string",
+            "description": "Service"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "scout",
+      "description": "Multi-cloud security auditing tool",
+      "category": "vulnerability",
+      "priority": false,
+      "assigned_agents": [
+        "exploit_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "risk_level": "medium",
+      "requires_auth": false
+    },
+    {
+      "name": "docker",
+      "description": "Container runtime and management",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string",
+            "description": "Container"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    },
+    {
+      "name": "kubectl",
+      "description": "Kubernetes command-line tool",
+      "category": "recon",
+      "priority": false,
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name"
+          },
+          "resource": {
+            "type": "string",
+            "description": "Resource"
+          }
+        },
+        "required": []
+      },
+      "risk_level": "low",
+      "requires_auth": false
+    }
+  ]
+}
