@@ -40,9 +40,15 @@ def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
         
     Returns:
         User input string
+        
+    Raises:
+        KeyboardInterrupt: Re-raised to allow graceful exit handling
     """
     try:
         return Prompt.ask(prompt_text, default=default)
+    except KeyboardInterrupt:
+        # Re-raise KeyboardInterrupt to allow graceful exit handling
+        raise
     except (UnicodeDecodeError, UnicodeError) as e:
         # Fallback to standard input with encoding fix
         try:
@@ -52,11 +58,14 @@ def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
             pass
         
         # Use standard input as fallback
-        if default:
-            result = input(f"{prompt_text} (default: {default}): ").strip()
-            return result if result else default
-        else:
-            return input(f"{prompt_text}: ").strip()
+        try:
+            if default:
+                result = input(f"{prompt_text} (default: {default}): ").strip()
+                return result if result else default
+            else:
+                return input(f"{prompt_text}: ").strip()
+        except KeyboardInterrupt:
+            raise
     except Exception as e:
         # Last resort fallback - use standard input
         try:
@@ -65,6 +74,8 @@ def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
                 return result if result else default
             else:
                 return input(f"{prompt_text}: ").strip()
+        except KeyboardInterrupt:
+            raise
         except Exception:
             # Ultimate fallback - return default or empty
             return default if default else ""
@@ -140,14 +151,18 @@ def main():
             pass
     
     # Model selection
-    console.print("\n[bold cyan]Model Selection[/bold cyan]")
-    console.print("1. Mistral 7B (default)")
-    console.print("2. Llama 3.1 8B (less refusal)")
-    console.print("3. DeepSeek-V2 7B (technical)")
-    console.print("4. Qwen2 Pentest (fine-tuned, recommended for pentest)")
-    console.print("5. Custom Ollama model")
-    
-    model_choice = safe_prompt_ask("\n[dim]Select model (1-5, default: 1)[/dim]", default="1")
+    try:
+        console.print("\n[bold cyan]Model Selection[/bold cyan]")
+        console.print("1. Mistral 7B (default)")
+        console.print("2. Llama 3.1 8B (less refusal)")
+        console.print("3. DeepSeek-V2 7B (technical)")
+        console.print("4. Qwen2 Pentest (fine-tuned, recommended for pentest)")
+        console.print("5. Custom Ollama model")
+        
+        model_choice = safe_prompt_ask("\n[dim]Select model (1-5, default: 1)[/dim]", default="1")
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+        sys.exit(0)
     
     model_map = {
         "1": "mistral:latest",
@@ -160,7 +175,11 @@ def main():
     selected_model = model_map.get(model_choice, "mistral:latest")
     
     if model_choice == "5":
-        selected_model = safe_prompt_ask("[dim]Enter Ollama model name (e.g., llama3.1:8b)[/dim]")
+        try:
+            selected_model = safe_prompt_ask("[dim]Enter Ollama model name (e.g., llama3.1:8b)[/dim]")
+        except KeyboardInterrupt:
+            console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+            sys.exit(0)
     
     console.print(f"[green]✅ Using model: {selected_model}[/green]\n")
     
@@ -174,16 +193,24 @@ def main():
     session_id: Optional[str] = None  # Legacy support
     
     # Show conversation selection menu
-    console.print("\n[bold cyan]Conversation Management[/bold cyan]")
-    console.print("1. Create new conversation")
-    console.print("2. List existing conversations")
-    console.print("3. Load existing conversation")
-    console.print("4. Continue with new conversation (default)")
-    
-    choice = safe_prompt_ask("\n[dim]Choice (1-4, default: 4)[/dim]", default="4")
+    try:
+        console.print("\n[bold cyan]Conversation Management[/bold cyan]")
+        console.print("1. Create new conversation")
+        console.print("2. List existing conversations")
+        console.print("3. Load existing conversation")
+        console.print("4. Continue with new conversation (default)")
+        
+        choice = safe_prompt_ask("\n[dim]Choice (1-4, default: 4)[/dim]", default="4")
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+        sys.exit(0)
     
     if choice == "1":
-        title = safe_prompt_ask("[dim]Conversation title (optional)[/dim]", default="")
+        try:
+            title = safe_prompt_ask("[dim]Conversation title (optional)[/dim]", default="")
+        except KeyboardInterrupt:
+            console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+            sys.exit(0)
         result = conversation_api.create_conversation(title=title if title else None)
         if result.get("success"):
             current_conversation_id = result["conversation_id"]
@@ -203,7 +230,11 @@ def main():
                     updated = conv.get("updated_at", "")[:10] if conv.get("updated_at") else ""
                     console.print(f"  {i}. {title} ({conv_id[:8]}...) - Updated: {updated}")
                 
-                load_choice = safe_prompt_ask("\n[dim]Load conversation number (or Enter to create new)[/dim]", default="")
+                try:
+                    load_choice = safe_prompt_ask("\n[dim]Load conversation number (or Enter to create new)[/dim]", default="")
+                except KeyboardInterrupt:
+                    console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+                    sys.exit(0)
                 if load_choice.isdigit():
                     idx = int(load_choice) - 1
                     if 0 <= idx < len(conversations):
@@ -225,7 +256,11 @@ def main():
             console.print(f"[red]❌ Failed to list conversations[/red]")
             current_conversation_id = memory_manager.start_conversation()
     elif choice == "3":
-        conv_id = safe_prompt_ask("[dim]Conversation ID[/dim]")
+        try:
+            conv_id = safe_prompt_ask("[dim]Conversation ID[/dim]")
+        except KeyboardInterrupt:
+            console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+            sys.exit(0)
         if conv_id:
             switch_result = conversation_api.switch_conversation(conv_id, memory_manager)
             if switch_result.get("success"):
@@ -393,10 +428,14 @@ def main():
                         console.print(f"  {i}. [cyan]{subtask.get('name', 'Tool execution')}[/cyan] - {tool_names}")
                     
                     console.print()
-                    approval_response = safe_prompt_ask(
-                        "[bold yellow]❓ Execute recommended tools?[/bold yellow] [dim](yes/no)[/dim]",
-                        default="yes"
-                    )
+                    try:
+                        approval_response = safe_prompt_ask(
+                            "[bold yellow]❓ Execute recommended tools?[/bold yellow] [dim](yes/no)[/dim]",
+                            default="yes"
+                        )
+                    except KeyboardInterrupt:
+                        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+                        sys.exit(0)
                     
                     if approval_response.lower() in ["yes", "y", "approve", "ok", "okay"]:
                         # User approved, update state and continue execution
@@ -511,14 +550,27 @@ def main():
                 raise e
     
     except KeyboardInterrupt:
+        # Graceful exit on Ctrl+C anywhere in main loop
         streaming_manager.stop()
-        console.print("\n\n[yellow]Interrupted by user[/yellow]")
+        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+        sys.exit(0)
     except Exception as e:
         streaming_manager.stop()
-        console.print(f"\n[red]Error: {str(e)}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        # Only show traceback for non-KeyboardInterrupt errors
+        if isinstance(e, KeyboardInterrupt):
+            console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+            sys.exit(0)
+        else:
+            console.print(f"\n[red]Error: {str(e)}[/red]")
+            import traceback
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        # Final catch for any KeyboardInterrupt that wasn't handled
+        console = Console()
+        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+        sys.exit(0)
