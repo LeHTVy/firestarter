@@ -239,7 +239,6 @@ class PgVectorStore:
         
         # Validate query embedding - must be a list/array of numbers
         if not query_embedding:
-            # Try fallback using LangChain
             try:
                 from models.llm_client import OllamaEmbeddingClient
                 fallback_client = OllamaEmbeddingClient(model_name="nomic-embed-text")
@@ -249,7 +248,6 @@ class PgVectorStore:
                 warnings.warn(f"Fallback embedding generation failed: {str(fallback_error)}")
                 return []
         
-        # Additional validation: ensure it's a list/array and not a string
         if not isinstance(query_embedding, (list, tuple)) or len(query_embedding) == 0:
             import warnings
             warnings.warn(f"Invalid embedding format: expected list/array, got {type(query_embedding)}")
@@ -268,9 +266,6 @@ class PgVectorStore:
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Convert embedding to PostgreSQL vector format
-            # Ensure all values are numeric and properly formatted
             try:
                 # Convert to list of floats first
                 embedding_floats = [float(x) for x in query_embedding]
