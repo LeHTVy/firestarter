@@ -6,9 +6,7 @@ Inspired by rutx approach for simple, direct tool execution.
 
 from typing import Dict, Any, Optional, Callable, List
 from tools.executor import get_executor
-from agents.tool_feedback_tracker import ToolFeedbackTracker
-from agents.result_analyzer import ResultAnalyzer
-from agents.feedback_learner import FeedbackLearner
+# FeedbackLearner removed
 
 
 class ToolExecutorNode:
@@ -18,7 +16,6 @@ class ToolExecutorNode:
                  context_manager,
                  memory_manager,
                  results_storage,
-                 policy_engine=None,
                  mode_manager=None,
                  stream_callback: Optional[Callable[[str, str, Any], None]] = None,
                  tool_calling_model: Optional[str] = None):
@@ -28,7 +25,6 @@ class ToolExecutorNode:
             context_manager: Context manager instance
             memory_manager: Memory manager instance
             results_storage: Results storage instance
-            policy_engine: Optional policy engine for validation
             mode_manager: Optional mode manager for execution mode
             stream_callback: Optional streaming callback
             tool_calling_model: Optional tool calling model name
@@ -36,15 +32,11 @@ class ToolExecutorNode:
         self.context_manager = context_manager
         self.memory_manager = memory_manager
         self.results_storage = results_storage
-        self.policy_engine = policy_engine
         self.mode_manager = mode_manager
         self.stream_callback = stream_callback
         self.executor = get_executor()
         
-        # Feedback tracking
-        self.feedback_tracker = ToolFeedbackTracker()
-        self.result_analyzer = ResultAnalyzer()
-        self.feedback_learner = FeedbackLearner(feedback_tracker=self.feedback_tracker)
+        # Feedback tracking removed
         
         # Tool calling registry (optional - for semantic tool selection)
         from models.tool_calling_registry import get_tool_calling_registry
@@ -72,7 +64,7 @@ class ToolExecutorNode:
         conversation_id = state.get("conversation_id") or state.get("session_id")
         
         # Validate subtasks against policy
-        if self.policy_engine and self.mode_manager:
+        if self.mode_manager:
             execution_mode = self.mode_manager.get_mode(conversation_id)
             subtasks = self._validate_subtasks(subtasks, target, conversation_id, execution_mode)
             state["subtasks"] = subtasks
@@ -95,9 +87,8 @@ class ToolExecutorNode:
     
     def _validate_subtasks(self, subtasks: List[Dict], target: Optional[str],
                           conversation_id: Optional[str], execution_mode) -> List[Dict]:
-        """Validate subtasks against policy."""
+        """Validate subtasks against mode compatibility."""
         from tools.registry import get_registry
-        from agents.policy_engine import PolicyDecision
         
         tool_registry = get_registry()
         validated = []
@@ -115,18 +106,12 @@ class ToolExecutorNode:
                 if not tool:
                     continue
                 
-                # Policy check if target exists
-                if target and self.policy_engine:
-                    result = self.policy_engine.check_tool_execution(
-                        tool=tool, target=target,
-                        conversation_id=conversation_id,
-                        execution_mode=execution_mode
-                    )
-                    
-                    if result.decision == PolicyDecision.DENIED:
+                # Mode compatibility check only
+                if self.mode_manager and tool.mode:
+                    if not self.mode_manager.is_tool_compatible(tool.mode, conversation_id):
                         if self.stream_callback:
                             self.stream_callback("model_response", "system",
-                                f"⚠️ Tool '{tool_name}' denied: {result.reason}")
+                                f"⚠️ Tool '{tool_name}' not compatible with current execution mode")
                         continue
                 
                 validated_tools.append(tool_name)
@@ -297,52 +282,20 @@ Extract parameters from context and execute the tool."""
     
     def _track_feedback(self, result: Dict, tool_name: str, state: Dict) -> None:
         """Track execution feedback."""
-        self.feedback_tracker.record_execution(
-            tool_name=tool_name,
-            success=result.get("success", False),
-            execution_time=result.get("execution_time", 0.0),
-            error=result.get("error"),
-            parameters=result.get("parameters"),
-            results=result.get("results"),
-            agent=state.get("selected_agent"),
-            session_id=state.get("conversation_id") or state.get("session_id")
-        )
-        
-        self.feedback_learner.collect_feedback(
-            tool_name=tool_name,
-            success=result.get("success", False),
-            execution_time=result.get("execution_time", 0.0),
-            reasoning=None,
-            error=result.get("error"),
-            parameters=result.get("parameters")
-        )
+        # FeedbackLearner removed - no tracking
+        pass
     
     def _analyze_results(self, state: Dict, tool_results: List[Dict], subtasks: List[Dict]) -> None:
         """Analyze results and suggest next tools."""
         if not tool_results:
             return
         
-        analysis = self.result_analyzer.analyze_results(tool_results)
-        state["result_analysis"] = analysis
-        
-        # Check for follow-up suggestions
-        suggested_tools = analysis.get("suggested_tools", [])
-        findings = analysis.get("findings", {})
-        
-        has_findings = any(
-            findings.get(key) and len(findings[key]) > 0
-            for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies"]
-        )
-        
-        if has_findings and suggested_tools:
-            follow_ups = self.result_analyzer.get_next_subtasks(findings, suggested_tools)
-            state["follow_up_subtasks"] = follow_ups
-            
-            if self.stream_callback:
-                summary = analysis.get("summary", "Analysis complete")
-                self.stream_callback("model_response", "system", f"📊 {summary}")
-                self.stream_callback("model_response", "system", 
-                    f"💡 Suggested: {', '.join(suggested_tools[:3])}")
+        # Result analyzer removed - basic analysis only
+        state["result_analysis"] = {
+            "summary": f"Executed {len(tool_results)} tool(s)",
+            "findings": {},
+            "suggested_tools": []
+        }
         
         # Mark completed subtasks
         self._mark_completed(tool_results, subtasks)

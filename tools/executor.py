@@ -106,11 +106,8 @@ class ToolExecutor:
         
         try:
             if tool.implementation:
-                # Execute via implementation function
                 result = self._execute_implementation(tool.implementation, parameters)
             else:
-                # Generic execution: Try to execute as system command
-                # This allows tools without Python implementation to still work
                 result = self._execute_generic_tool(tool_name, parameters, command_name)
             
             end_time = datetime.utcnow()

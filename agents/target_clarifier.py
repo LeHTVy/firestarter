@@ -82,55 +82,46 @@ class TargetClarifier:
                 )
                 
                 for result in context_results:
-                    # Extract potential entity mentions from context
                     content = result.get("content", "") or result.get("text", "")
                     if content:
-                        # Simple heuristic: look for domain-like patterns
                         import re
                         domain_pattern = re.compile(r'\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.(?:[a-zA-Z]{2,}))\b')
                         domains = domain_pattern.findall(content)
                         
-                        for domain in domains[:3]:  # Limit to 3 domains per result
+                        for domain in domains[:3]:
                             candidates.append({
                                 "domain": domain.lower(),
                                 "source": "conversation_history",
-                                "confidence": 0.6,  # Medium confidence from history
-                                "context": content[:200]  # First 200 chars
+                                "confidence": 0.6,
+                                "context": content[:200]
                             })
         except Exception as e:
-            # Don't fail if vector search fails
             pass
         
-        # 2. Check verified targets database (PostgreSQL)
         try:
-            # Get all conversations with verified targets
             conversations = self.memory_manager.conversation_store.list_conversations(limit=100)
             
             for conv in conversations:
                 verified_target = conv.get('verified_target')
                 if verified_target:
-                    # Simple fuzzy match
                     query_lower = query.lower()
                     target_lower = verified_target.lower()
                     
                     # Check if query matches target
                     if query_lower in target_lower or target_lower in query_lower:
-                        # Calculate simple similarity
                         from rapidfuzz import fuzz
                         similarity = fuzz.ratio(query_lower, target_lower) / 100.0
                         
-                        if similarity > 0.5:  # 50% similarity threshold
+                        if similarity > 0.5:
                             candidates.append({
                                 "domain": verified_target,
                                 "source": "verified_targets_db",
-                                "confidence": similarity * 0.8,  # Slightly lower than exact match
+                                "confidence": similarity * 0.8,
                                 "conversation_id": conv.get('id')
                             })
         except Exception as e:
-            # Don't fail if DB lookup fails
             pass
         
-        # Remove duplicates and sort by confidence
         seen_domains = set()
         unique_candidates = []
         for candidate in candidates:
@@ -139,10 +130,9 @@ class TargetClarifier:
                 seen_domains.add(domain)
                 unique_candidates.append(candidate)
         
-        # Sort by confidence (descending)
         unique_candidates.sort(key=lambda x: x.get("confidence", 0), reverse=True)
         
-        return unique_candidates[:5]  # Return top 5 candidates
+        return unique_candidates[:5]
     
     def _calculate_ambiguity_score(self, 
                                   candidates: List[Dict[str, Any]], 
@@ -166,25 +156,17 @@ class TargetClarifier:
             confidence = candidates[0].get("confidence", 0)
             return 1.0 - confidence  
         
-        # Multiple candidates - calculate based on:
-        # 1. Number of candidates (more = more ambiguous)
-        # 2. Confidence spread (similar confidence = more ambiguous)
-        # 3. Whether we have company_name and location (more context = less ambiguous)
-        
         num_candidates = len(candidates)
         confidences = [c.get("confidence", 0) for c in candidates]
         max_conf = max(confidences)
         min_conf = min(confidences)
         conf_spread = max_conf - min_conf
         
-        # Base ambiguity from number of candidates
         base_ambiguity = min(0.8, 0.3 + (num_candidates - 1) * 0.15)
         
-        # Reduce ambiguity if confidence spread is large (one clear winner)
         if conf_spread > 0.3:
             base_ambiguity *= 0.6
         
-        # Reduce ambiguity if we have company_name and location
         if company_name and location:
             base_ambiguity *= 0.7
         
@@ -209,7 +191,6 @@ class TargetClarifier:
             source = candidate.get("source", "unknown")
             confidence = candidate.get("confidence", 0)
             
-            # Try to get structured info if available
             legal_name = candidate.get("legal_name", "")
             country = candidate.get("country", "")
             asn = candidate.get("asn")
@@ -254,7 +235,6 @@ class TargetClarifier:
         Returns:
             List of suggested search queries
         """
-        # Generate queries using LLM
         query_generation_prompt = f"""Generate 3-5 intelligent web search queries to find the official website domain for a company/organization.
 
 Company name: {company_name or 'unknown'}
@@ -280,7 +260,6 @@ Return a JSON array of query strings:
             if result.get("success"):
                 response_text = result.get("raw_response", "")
                 
-                # Extract JSON
                 if "```json" in response_text:
                     json_start = response_text.find("```json") + 7
                     json_end = response_text.find("```", json_start)
@@ -302,7 +281,6 @@ Return a JSON array of query strings:
         except Exception:
             pass
         
-        # Fallback: Generate simple queries
         queries = []
         if company_name and location:
             queries.append(f"{company_name} {location} official website domain")
@@ -329,16 +307,14 @@ Return a JSON array of query strings:
         Returns:
             Structured info dict with legal_name, country, domain, asn, ip_ranges, confidence
         """
-        # Format search results for LLM
         formatted_results = []
-        for i, result in enumerate(search_results[:10], 1):  # Limit to top 10
+        for i, result in enumerate(search_results[:10], 1):
             formatted_results.append({
                 "title": result.get("title", ""),
                 "snippet": result.get("snippet", ""),
                 "link": result.get("link", "")
             })
         
-        # Use prompt template if available, otherwise use inline prompt
         if self.extraction_template:
             extraction_prompt = self.extraction_template.render(
                 search_results=formatted_results,

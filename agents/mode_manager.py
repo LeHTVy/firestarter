@@ -3,6 +3,13 @@
 from enum import Enum
 from typing import Optional, List
 
+# Mode descriptions
+MODE_DESCRIPTIONS = {
+    "passive": "OSINT only, no packets sent, legally safe. Use for public information gathering only.",
+    "cooperative": "Scanner allowed, authenticated scan, limited scope. Use for authorized network scanning.",
+    "simulation": "Lab/digital twin, replay attack chain, no production impact. Use for safe exploit testing."
+}
+
 
 class ExecutionMode(Enum):
     """Execution mode for tool execution control."""
@@ -100,22 +107,21 @@ class ModeManager:
         current_mode = self.get_mode(conversation_id)
         allowed_modes = self.MODE_COMPATIBILITY.get(current_mode, [])
         
-        compatible_tools = []
-        for tool in tools:
+        def is_compatible(tool):
+            """Check if tool is compatible with current mode."""
             tool_modes = tool.get("mode", [])
             
             # If tool has no mode specified, allow it (backward compatibility)
             if not tool_modes:
-                compatible_tools.append(tool)
-                continue
+                return True
             
             # Check if any tool mode is compatible
-            for tool_mode in tool_modes:
-                if tool_mode.lower() in [m.lower() for m in allowed_modes]:
-                    compatible_tools.append(tool)
-                    break
+            return any(
+                mode.lower() in [a.lower() for a in allowed_modes]
+                for mode in tool_modes
+            )
         
-        return compatible_tools
+        return [tool for tool in tools if is_compatible(tool)]
     
     def get_mode_description(self, mode: Optional[ExecutionMode] = None) -> str:
         """Get description of execution mode.
@@ -129,13 +135,7 @@ class ModeManager:
         if mode is None:
             mode = self.default_mode
         
-        descriptions = {
-            ExecutionMode.PASSIVE: "OSINT only, no packets sent, legally safe. Use for public information gathering only.",
-            ExecutionMode.COOPERATIVE: "Scanner allowed, authenticated scan, limited scope. Use for authorized network scanning.",
-            ExecutionMode.SIMULATION: "Lab/digital twin, replay attack chain, no production impact. Use for safe exploit testing."
-        }
-        
-        return descriptions.get(mode, "Unknown mode")
+        return MODE_DESCRIPTIONS.get(mode.value, "Unknown mode")
     
     def validate_mode_switch(self, from_mode: ExecutionMode, to_mode: ExecutionMode) -> tuple[bool, Optional[str]]:
         """Validate if mode switch is allowed.
@@ -147,10 +147,6 @@ class ModeManager:
         Returns:
             Tuple of (allowed, reason if not allowed)
         """
-        # Mode hierarchy: PASSIVE < COOPERATIVE < SIMULATION
-        # Can only increase aggressiveness, not decrease
-        # (Actually, we allow any switch but warn about downgrading)
-        
         mode_order = [ExecutionMode.PASSIVE, ExecutionMode.COOPERATIVE, ExecutionMode.SIMULATION]
         
         from_index = mode_order.index(from_mode) if from_mode in mode_order else -1

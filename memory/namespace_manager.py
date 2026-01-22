@@ -21,8 +21,6 @@ class NamespaceManager:
         Returns:
             Collection name for this conversation
         """
-        # Use conversation_id as part of collection name for isolation
-        # Format: "conversation_{conversation_id}" or use conversation_id directly
         return f"conversation_{conversation_id}"
     
     def get_state_namespace(self, conversation_id: str) -> str:
@@ -106,8 +104,6 @@ class NamespaceManager:
         Args:
             conversation_id: Conversation UUID
         """
-        # In PostgreSQL-based implementation, we don't need explicit unloading
-        # Data persists in database. This method is for future Redis-based caching.
         pass
     
     def _load_agent_state(self, conversation_id: str) -> Optional[Dict[str, Any]]:
@@ -166,7 +162,6 @@ class NamespaceManager:
             
             return None
         except Exception as e:
-            # Return None on error (state might not exist yet)
             return None
     
     def save_agent_state(self, conversation_id: str, state_type: str, state_data: Dict[str, Any]):

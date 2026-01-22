@@ -1,12 +1,38 @@
 """Intent classifier for distinguishing questions from requests."""
 
 import json
+import re
 from typing import Dict, Any, Optional
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from config import load_config
 from models.llm_client import OllamaLLMClient
+
+# Constants
+INTENT_QUESTION = "question"
+INTENT_REQUEST = "request"
+VALID_INTENTS = [INTENT_QUESTION, INTENT_REQUEST]
+
+# System prompt for intent classification
+SYSTEM_PROMPT = (
+    "You are an expert intent classifier for a penetration testing agent. "
+    "You understand the semantic difference between questions (seeking information/explanation) "
+    "and requests (requesting actions to be performed). You analyze the user's intent based on "
+    "context, not just keywords. Direct tool execution commands (e.g., 'use whois on domain', "
+    "'run nmap on target') are ALWAYS requests, even if phrased as questions."
+)
+
+# Tool execution patterns for fallback classification
+TOOL_EXECUTION_PATTERNS = [
+    r"use\s+\w+\s+on\s+",      # "use whois on domain"
+    r"use\s+\w+\s+for\s+",      # "use nmap for target"
+    r"run\s+\w+\s+on\s+",       # "run nmap on target"
+    r"execute\s+\w+\s+on\s+",   # "execute tool on target"
+]
+
+# Obvious action verbs for fallback
+OBVIOUS_ACTION_VERBS = ["scan", "test", "run", "execute", "use", "attack"]
 
 
 class IntentClassifier:
@@ -28,6 +54,17 @@ class IntentClassifier:
             'num_predict': 2048
         })
         self.ollama_base_url = self.config['ollama']['base_url']
+        
+        # Initialize LLM client (CRITICAL FIX)
+        self.llm_client = OllamaLLMClient(
+            model_name=self.model_config['model_name'],
+            base_url=self.ollama_base_url,
+            config_path=config_path,
+            temperature=self.model_config.get('temperature', 0.85),
+            top_p=self.model_config.get('top_p', 0.95),
+            top_k=self.model_config.get('top_k', 50),
+            num_predict=self.model_config.get('num_predict', 2048)
+        )
         
         template_dir = Path(__file__).parent.parent / "prompts"
         self.env = Environment(loader=FileSystemLoader(str(template_dir)))
@@ -52,7 +89,7 @@ class IntentClassifier:
         prompt = self.intent_prompt_template.render(user_prompt=user_prompt)
         
         messages = [
-            {"role": "system", "content": "You are an expert intent classifier for a penetration testing agent. You understand the semantic difference between questions (seeking information/explanation) and requests (requesting actions to be performed). You analyze the user's intent based on context, not just keywords. Direct tool execution commands (e.g., 'use whois on domain', 'run nmap on target') are ALWAYS requests, even if phrased as questions."},
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ]
         
@@ -80,35 +117,25 @@ class IntentClassifier:
             
             content = response.get('content', '')
             
-            # Try to parse JSON from response
-            try:
-                # Extract JSON from markdown code blocks if present
-                if "```json" in content:
-                    json_start = content.find("```json") + 7
-                    json_end = content.find("```", json_start)
-                    content = content[json_start:json_end].strip()
-                elif "```" in content:
-                    json_start = content.find("```") + 3
-                    json_end = content.find("```", json_start)
-                    content = content[json_start:json_end].strip()
-                
-                classification = json.loads(content)
-                
+            # Extract and parse JSON from response
+            json_data = self._extract_json_from_response(content)
+            
+            if json_data:
                 # Validate and normalize intent
-                intent = classification.get("intent", "").lower()
-                if intent not in ["question", "request"]:
+                intent = json_data.get("intent", "").lower()
+                if intent not in VALID_INTENTS:
                     # Default based on keywords if parsing fails
                     intent = self._fallback_classify(user_prompt)
                 
                 return {
                     "success": True,
                     "intent": intent,
-                    "confidence": float(classification.get("confidence", 0.5)),
-                    "reasoning": classification.get("reasoning", ""),
+                    "confidence": float(json_data.get("confidence", 0.5)),
+                    "reasoning": json_data.get("reasoning", ""),
                     "raw_response": content
                 }
-            except json.JSONDecodeError:
-                # Fallback classification
+            else:
+                # Fallback classification if JSON parsing fails
                 intent = self._fallback_classify(user_prompt)
                 return {
                     "success": True,
@@ -129,6 +156,32 @@ class IntentClassifier:
                 "error": str(e)
             }
     
+    def _extract_json_from_response(self, content: str) -> Optional[Dict[str, Any]]:
+        """Extract JSON from LLM response (handles markdown code blocks).
+        
+        Args:
+            content: Raw response content
+            
+        Returns:
+            Parsed JSON dictionary or None
+        """
+        # Extract from ```json blocks
+        if "```json" in content:
+            json_start = content.find("```json") + 7
+            json_end = content.find("```", json_start)
+            if json_end > json_start:
+                content = content[json_start:json_end].strip()
+        elif "```" in content:
+            json_start = content.find("```") + 3
+            json_end = content.find("```", json_start)
+            if json_end > json_start:
+                content = content[json_start:json_end].strip()
+        
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return None
+    
     def _fallback_classify(self, user_prompt: str) -> str:
         """Fallback classification - ONLY used when LLM completely fails.
         
@@ -143,29 +196,15 @@ class IntentClassifier:
         """
         prompt_lower = user_prompt.lower()
         
-        # Only check for the most obvious direct tool execution patterns
-        # These are unambiguous and should be caught by LLM, but we check as safety net
-        import re
-        tool_execution_patterns = [
-            r"use\s+\w+\s+on\s+",  # "use whois on domain"
-            r"use\s+\w+\s+for\s+",  # "use nmap for target"
-            r"run\s+\w+\s+on\s+",   # "run nmap on target"
-            r"execute\s+\w+\s+on\s+",  # "execute tool on target"
-        ]
-        
-        for pattern in tool_execution_patterns:
+        # Check for the most obvious direct tool execution patterns
+        for pattern in TOOL_EXECUTION_PATTERNS:
             if re.search(pattern, prompt_lower):
-                return "request"
+                return INTENT_REQUEST
         
-        # Check if starts with obvious action verb (unambiguous commands)
+        # Check if starts with obvious action verb
         words = prompt_lower.split()
-        if words:
-            first_word = words[0]
-            # Only the most obvious action verbs
-            obvious_actions = ["scan", "test", "run", "execute", "use", "attack"]
-            if first_word in obvious_actions:
-                return "request"
+        if words and words[0] in OBVIOUS_ACTION_VERBS:
+            return INTENT_REQUEST
         
         # Default to question if truly ambiguous (safer default)
-        # The LLM should have caught this, but if we're here, it's ambiguous
-        return "question"
+        return INTENT_QUESTION

@@ -8,7 +8,7 @@ from jinja2 import Environment, FileSystemLoader
 from models.generic_ollama_agent import GenericOllamaAgent
 # FunctionGemma removed - using tool calling registry instead
 from models.tool_calling_registry import get_tool_calling_registry
-from models.deepseek_agent import DeepSeekAgent
+# DeepSeekAgent removed - using GenericOllamaAgent instead
 from tools.registry import get_registry
 from tools.executor import get_executor
 
@@ -35,7 +35,11 @@ class AutoGenAgent:
         # Initialize model agent based on resolved model
         # Check for special agent types first
         if resolved_model.startswith("deepseek-r1") or resolved_model.startswith("deepseek_r1"):
-            self.model_agent = DeepSeekAgent()
+            # DeepSeekAgent removed - using GenericOllamaAgent instead
+            self.model_agent = GenericOllamaAgent(
+                model_name=resolved_model,
+                prompt_template="deepseek_system.jinja2"
+            )
         elif resolved_model == "json_tool_calling" or self.model_name == "functiongemma":
             # Tool calling registry (legacy functiongemma support)
             tool_registry = get_tool_calling_registry()

@@ -29,7 +29,7 @@ class ToolExecutionPanel:
         self.output_lines: List[str] = []
         self.status = "Initializing..."
         self.max_lines = 50  # Limit output lines to prevent overflow
-        self.result: Optional[Dict[str, Any]] = None  # Store final result
+        self.result: Optional[Dict[str, Any]] = None  
         
     def update_status(self, status: str):
         """Update status message."""
@@ -91,7 +91,7 @@ class ToolExecutionPanel:
         content_lines.append("[bold]Output:[/bold]")
         
         # Add output lines
-        for line in self.output_lines[-20:]:  # Show last 20 lines
+        for line in self.output_lines[-20:]:  
             content_lines.append(f"  {line}")
         
         if len(self.output_lines) > 20:

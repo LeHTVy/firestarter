@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from rag.pgvector_store import PgVectorStore
 from memory.namespace_manager import NamespaceManager
-from agents.tool_result_summarizer import ToolResultSummarizer
+# ToolResultSummarizer removed
 import uuid
 
 
@@ -24,7 +24,7 @@ class ToolResultsStorage:
         # Default vectorstore (for backward compatibility)
         self.vectorstore = PgVectorStore(collection_name=collection_name)
         self.auto_summarize = auto_summarize
-        self.summarizer = ToolResultSummarizer() if auto_summarize else None
+        # ToolResultSummarizer removed
     
     def _get_collection_for_conversation(self, conversation_id: Optional[str] = None) -> PgVectorStore:
         """Get vectorstore for specific conversation (namespace isolation).
@@ -76,22 +76,12 @@ class ToolResultsStorage:
         result_text = json.dumps(results, indent=2) if isinstance(results, dict) else str(results)
         result_size = len(result_text.encode('utf-8'))
         
-        # Auto-summarize if result is large
+        # Auto-summarize removed - using full result
         summary = None
         summary_metadata = None
-        if self.auto_summarize and self.summarizer and self.summarizer.should_summarize(results):
-            try:
-                summary = self.summarizer.summarize(tool_name, parameters, results, agent)
-                summary_metadata = self.summarizer.create_summary_metadata(summary, result_size)
-            except Exception as e:
-                # If summarization fails, continue with full result
-                print(f"Warning: Summarization failed: {e}")
-                summary = None
         
-        # Create document text (use summary if available and result is large)
-        if summary and summary_metadata:
-            # Use summary for context retrieval, but keep reference to full result
-            doc_text = f"Tool: {tool_name}\nParameters: {json.dumps(parameters)}\nSummary: {json.dumps(summary, indent=2)}\n[Full result available in execution_id: {doc_id}]"
+        # Create document text
+        doc_text = f"Tool: {tool_name}\nParameters: {json.dumps(parameters)}\nResults: {result_text[:10000]}"  # Limit to 10KB
         else:
             doc_text = f"Tool: {tool_name}\nParameters: {json.dumps(parameters)}\nResults: {result_text}"
         

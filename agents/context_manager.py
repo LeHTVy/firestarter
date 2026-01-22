@@ -11,6 +11,10 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import re
 
+# Constants
+TARGET_PRIORITY_FIELDS = ["target_domain", "target_ip"]  # Fields that can be None but should be preserved
+LIST_MERGE_FIELDS = ["subdomains", "open_ports", "detected_tech", "vulns_found", "tools_run"]
+
 
 @dataclass
 class SessionContext:
@@ -94,7 +98,7 @@ class SessionContext:
             from urllib.parse import urlparse
             parsed = urlparse(url)
             return parsed.netloc if parsed.netloc else None
-        except:
+        except Exception:
             return None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -139,7 +143,13 @@ class SessionContext:
         mapped["has_ports"] = data.get("has_ports", len(mapped["open_ports"]) > 0)
         mapped["is_correction"] = data.get("is_correction", False)
         
-        return cls(**{k: v for k, v in mapped.items() if v is not None or k in ["target_domain", "target_ip"]})
+        # Filter: preserve target fields even if None, exclude other None values
+        filtered = {
+            k: v for k, v in mapped.items()
+            if v is not None or k in TARGET_PRIORITY_FIELDS
+        }
+        
+        return cls(**filtered)
     
     def merge_with(self, updates: Dict[str, Any]) -> "SessionContext":
         """
@@ -150,15 +160,14 @@ class SessionContext:
         current = self.to_dict()
         
         # Handle list merges specially (don't replace, extend)
-        list_fields = ["subdomains", "open_ports", "detected_tech", "vulns_found", "tools_run"]
-        for field in list_fields:
-            if field in updates and updates[field]:
-                existing = current.get(field, [])
-                new_items = updates[field]
+        for field_name in LIST_MERGE_FIELDS:
+            if field_name in updates and updates[field_name]:
+                existing = current.get(field_name, [])
+                new_items = updates[field_name]
                 if isinstance(new_items, list):
                     # Dedupe while preserving order
                     combined = existing + [x for x in new_items if x not in existing]
-                    updates[field] = combined
+                    updates[field_name] = combined
         
         # Apply updates
         current.update(updates)
@@ -189,11 +198,16 @@ class ContextManager:
     """
     
     def __init__(self):
+        """Initialize context manager."""
         self._session_context: Optional[SessionContext] = None
         self._memory_manager = None
     
     def set_memory_manager(self, memory_manager):
-        """Set memory manager instance."""
+        """Set memory manager instance.
+        
+        Args:
+            memory_manager: Memory manager instance
+        """
         self._memory_manager = memory_manager
     
     def get_context(self, state: Optional[Dict[str, Any]] = None) -> SessionContext:
@@ -241,7 +255,15 @@ class ContextManager:
         return updated
     
     def get_target(self, state: Optional[Dict[str, Any]] = None) -> Optional[str]:
-        """Get current target (domain/IP)."""
+        """
+        Get current target (domain/IP).
+        
+        Args:
+            state: Optional state dictionary
+            
+        Returns:
+            Target string or None
+        """
         context = self.get_context(state)
         return context.get_target()
 
@@ -251,7 +273,11 @@ _context_manager: Optional[ContextManager] = None
 
 
 def get_context_manager() -> ContextManager:
-    """Get singleton context manager instance."""
+    """Get singleton context manager instance.
+    
+    Returns:
+        ContextManager instance
+    """
     global _context_manager
     if _context_manager is None:
         _context_manager = ContextManager()

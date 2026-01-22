@@ -27,30 +27,24 @@ class GenericOllamaAgent:
         self.model_name = model_name
         self.config = load_config(config_path) if config_path else self._load_default_config()
         self.ollama_base_url = self.config['ollama']['base_url']
-        
-        # Initialize LangChain LLM client
-        # Use lower temperature (0.3) like rutx to reduce refusal
         self.llm_client = OllamaLLMClient(
             model_name=model_name,
             base_url=self.ollama_base_url,
             config_path=config_path,
-            temperature=0.3,  # Lower temperature like rutx to reduce refusal
+            temperature=0.3,
             top_p=0.9,
             top_k=40,
             num_predict=2048,
             repeat_penalty=1.1
         )
         
-        # Get tool registry
         self.registry = get_registry()
         
-        # Load prompt template
         template_dir = Path(__file__).parent.parent / "prompts"
         self.env = Environment(loader=FileSystemLoader(str(template_dir)))
         try:
             self.system_prompt_template = self.env.get_template(prompt_template)
         except:
-            # Fallback to qwen3_system if template not found
             self.system_prompt_template = self.env.get_template("qwen3_system.jinja2")
     
     def _load_default_config(self) -> Dict[str, Any]:
@@ -117,7 +111,6 @@ class GenericOllamaAgent:
         ]
         
         try:
-            # Use LangChain client for generation
             response = self.llm_client.generate(
                 messages=messages,
                 stream=stream_callback is not None,
@@ -137,38 +130,6 @@ class GenericOllamaAgent:
                 }
             
             content = response.get('content', '')
-            
-            # Check if model refused (expanded list based on actual Mistral refusal patterns)
-            content_lower = content.lower()
-            refusal_indicators = [
-                "i'm unable to assist",
-                "i cannot assist",
-                "i cannot help",
-                "i'm unable to help",
-                "unauthorized access",
-                "illegal",
-                "unethical",
-                "violates",
-                "i cannot provide",
-                "i'm unable to provide",
-                "i cannot support",
-                "i cannot perform",
-                "i'm unable to perform",
-                "refuse",
-                "decline",
-                "not authorized",
-                "against my",
-                "ethical concerns",
-                "ethical guidelines",
-                "i must clarify",  # Mistral-specific refusal pattern
-                "i am here to assist and promote safe",  # Mistral-specific refusal pattern
-                "i will not engage",  # Mistral-specific refusal pattern
-                "cannot assist with",  # Mistral-specific refusal pattern
-                "promote safe, legal, and ethical",  # Mistral-specific refusal pattern
-                "safe, legal, and ethical activities"  # Mistral-specific refusal pattern
-            ]
-            
-            is_refusal = any(indicator in content_lower for indicator in refusal_indicators)
             
             # Extract reasoning and output from structured format
             reasoning = None
@@ -203,44 +164,35 @@ class GenericOllamaAgent:
                 analysis_data = json.loads(output_content)
                 
                 return {
-                    "success": not is_refusal,
+                    "success": True,
                     "analysis": analysis_data,
                     "reasoning": reasoning,
                     "raw_response": content,
-                    "refused": is_refusal
+                    "refused": False
                 }
             except json.JSONDecodeError:
-                # JSON parsing failed
-                if is_refusal:
-                    return {
-                        "success": False,
-                        "error": "Model refused the request",
-                        "raw_response": content,
-                        "refused": True
-                    }
-                else:
-                    # Try to extract JSON from anywhere in the response
-                    import re
-                    json_match = re.search(r'\{.*\}', output_content, re.DOTALL)
-                    if json_match:
-                        try:
-                            analysis_data = json.loads(json_match.group())
-                            return {
-                                "success": True,
-                                "analysis": analysis_data,
-                                "reasoning": reasoning,
-                                "raw_response": content,
-                                "refused": False
-                            }
-                        except:
-                            pass
-                    
-                    return {
-                        "success": False,
-                        "error": "Failed to parse JSON from response",
-                        "raw_response": content,
-                        "refused": False
-                    }
+                # JSON parsing failed - try to extract JSON from anywhere in the response
+                import re
+                json_match = re.search(r'\{.*\}', output_content, re.DOTALL)
+                if json_match:
+                    try:
+                        analysis_data = json.loads(json_match.group())
+                        return {
+                            "success": True,
+                            "analysis": analysis_data,
+                            "reasoning": reasoning,
+                            "raw_response": content,
+                            "refused": False
+                        }
+                    except:
+                        pass
+                
+                return {
+                    "success": False,
+                    "error": "Failed to parse JSON from response",
+                    "raw_response": content,
+                    "refused": False
+                }
         except Exception as e:
             return {
                 "success": False,
