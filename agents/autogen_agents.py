@@ -226,11 +226,16 @@ class AutoGenAgent:
 class AutoGenCoordinator:
     """Coordinator for AutoGen multi-agent system with agent-to-agent communication."""
     
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Optional[Path] = None, model_overrides: Optional[Dict[str, str]] = None):
         """Initialize AutoGen coordinator.
         
         Args:
             config_path: Path to AutoGen config file
+            model_overrides: Optional dict mapping agent_name -> model_name to override
+                           config file model assignments. Enables runtime multi-agent
+                           multi-model selection from main.py.
+                           Example: {"recon_agent": "qwen2-pentest-v2:latest", 
+                                    "exploit_agent": "deepseek-r1:latest"}
         """
         if config_path is None:
             config_path = Path(__file__).parent.parent / "config" / "autogen_config.yaml"
@@ -238,9 +243,17 @@ class AutoGenCoordinator:
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
-        # Initialize agents
+        # Store model overrides for reference
+        self.model_overrides = model_overrides or {}
+        
+        # Initialize agents with optional model overrides
         self.agents: Dict[str, AutoGenAgent] = {}
         for agent_name, agent_config in self.config['agents'].items():
+            # Apply model override if provided
+            if agent_name in self.model_overrides:
+                agent_config = agent_config.copy()  # Don't mutate original config
+                agent_config['model'] = self.model_overrides[agent_name]
+            
             agent = AutoGenAgent(agent_config)
             agent.coordinator = self  # Give agents reference to coordinator for communication
             self.agents[agent_name] = agent

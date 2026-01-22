@@ -150,9 +150,13 @@ def main():
             # Silently handle streaming errors to not break main flow
             pass
     
-    # Model selection - Auto-detect available Ollama models
+    # Multi-Agent Model Selection - Auto-detect available Ollama models
+    agent_model_config = {}  # Will store agent -> model mapping
+    selected_model = "mistral:latest"  # Default fallback
+    
     try:
         from utils.ollama_helper import get_model_names, check_model_exists
+        from utils.model_selector import MultiAgentModelSelector
         
         console.print("\n[bold cyan]Model Selection[/bold cyan]")
         
@@ -163,23 +167,56 @@ def main():
             console.print("[yellow]⚠️  No models found in Ollama. Please install at least one model.[/yellow]")
             console.print("[dim]Example: ollama pull mistral:latest[/dim]\n")
             selected_model = "mistral:latest"  # Fallback
+            agent_model_config = {
+                "recon_agent": selected_model,
+                "exploit_agent": selected_model,
+                "analysis_agent": selected_model,
+                "results_qa_agent": selected_model,
+            }
         else:
-            # Show available models with numbers
-            console.print(f"[dim]Found {len(available_models)} model(s) in Ollama:[/dim]\n")
-            for i, model_name in enumerate(available_models, 1):
-                # Highlight recommended models
-                is_recommended = any(keyword in model_name.lower() for keyword in ["pentest", "qwen2", "deepseek"])
-                marker = " ⭐ (recommended)" if is_recommended else ""
-                console.print(f"  {i}. {model_name}{marker}")
+            # Ask user for model selection mode
+            console.print(f"[dim]Found {len(available_models)} model(s) in Ollama.[/dim]\n")
+            console.print("1. Quick mode: Use same model for all agents")
+            console.print("2. Multi-agent mode: Assign different models to different agents")
             
-            console.print("")
+            mode_choice = safe_prompt_ask("\n[dim]Select mode (1-2, default: 2)[/dim]", default="2")
             
-            # Get user selection
-            max_choice = len(available_models)
-            model_choice = safe_prompt_ask(
-                f"[dim]Select analysis model (1-{max_choice}, default: 1)[/dim]",
-                default="1"
-            )
+            if mode_choice == "1":
+                # Quick mode: Single model for all agents
+                console.print("\n[bold]Available Models:[/bold]")
+                for i, model_name in enumerate(available_models, 1):
+                    is_recommended = any(keyword in model_name.lower() for keyword in ["pentest", "qwen2", "deepseek"])
+                    marker = " ⭐ (recommended)" if is_recommended else ""
+                    console.print(f"  {i}. {model_name}{marker}")
+                
+                max_choice = len(available_models)
+                model_choice = safe_prompt_ask(
+                    f"\n[dim]Select model for all agents (1-{max_choice}, default: 1)[/dim]",
+                    default="1"
+                )
+                
+                if model_choice.isdigit() and 1 <= int(model_choice) <= max_choice:
+                    selected_model = available_models[int(model_choice) - 1]
+                else:
+                    selected_model = available_models[0]
+                
+                agent_model_config = {
+                    "recon_agent": selected_model,
+                    "exploit_agent": selected_model,
+                    "analysis_agent": selected_model,
+                    "results_qa_agent": selected_model,
+                }
+                console.print(f"\n[green]✅ Using {selected_model} for all agents[/green]")
+            else:
+                # Multi-agent mode: Different models for different agents
+                model_selector = MultiAgentModelSelector(console=console)
+                agent_model_config = model_selector.select_models(
+                    available_models=available_models,
+                    prompt_func=safe_prompt_ask
+                )
+                # Use analysis_agent model as the "main" selected model for backward compatibility
+                selected_model = agent_model_config.get("analysis_agent", available_models[0])
+                
     except KeyboardInterrupt:
         console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
         sys.exit(0)
@@ -188,8 +225,12 @@ def main():
         console.print(f"[yellow]⚠️  Could not detect Ollama models: {e}[/yellow]")
         console.print("[dim]Using default model: mistral:latest[/dim]")
         selected_model = "mistral:latest"
-    
-    console.print(f"[green]✅ Using analysis model: {selected_model}[/green]")
+        agent_model_config = {
+            "recon_agent": selected_model,
+            "exploit_agent": selected_model,
+            "analysis_agent": selected_model,
+            "results_qa_agent": selected_model,
+        }
     
     # Tool calling model selection
     # Initialize default value first to avoid UnboundLocalError
@@ -226,7 +267,8 @@ def main():
     graph = PentestGraph(
         stream_callback=graph_stream_callback,
         analysis_model=selected_model,
-        tool_calling_model=tool_calling_model_name
+        tool_calling_model=tool_calling_model_name,
+        agent_model_config=agent_model_config
     )
     
     # Conversation management
