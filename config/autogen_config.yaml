@@ -1,11 +1,9 @@
-# AutoGen multi-agent configuration
-
 agents:
   recon_agent:
     name: "Recon Agent"
     description: "Chuyên về reconnaissance tasks (network scanning, OSINT)"
-    model: "mistral"
-    fallback_model: "functiongemma"
+    model: ""  
+    fallback_model: "" 
     system_prompt_file: "prompts/autogen_recon.jinja2"
     tool_categories:
       - "recon"
@@ -23,8 +21,8 @@ agents:
   exploit_agent:
     name: "Exploit Agent"
     description: "Chuyên về exploit research và execution"
-    model: "deepseek_r1"
-    fallback_model: "mistral"
+    model: ""  
+    fallback_model: ""
     system_prompt_file: "prompts/autogen_exploit.jinja2"
     tool_categories:
       - "exploitation"
@@ -41,8 +39,8 @@ agents:
   analysis_agent:
     name: "Analysis Agent"
     description: "Phân tích kết quả, vulnerability assessment"
-    model: "mistral"
-    fallback_model: "deepseek_r1"
+    model: ""
+    fallback_model: ""
     system_prompt_file: "prompts/autogen_analysis.jinja2"
     tool_categories:
       - "malware_analysis"
@@ -61,8 +59,8 @@ agents:
   results_qa_agent:
     name: "Results Q&A Agent"
     description: "Trả lời câu hỏi về tool results đã chạy"
-    model: "mistral"
-    fallback_model: "deepseek_r1"
+    model: "mistral:latest"
+    fallback_model: ""
     system_prompt_file: "prompts/results_qa.jinja2"
     tool_categories: []
     capabilities:

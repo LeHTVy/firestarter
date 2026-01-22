@@ -159,74 +159,35 @@ def main():
         # Get available models from Ollama
         available_models = get_model_names()
         
-        if available_models:
-            console.print(f"[dim]Found {len(available_models)} model(s) in Ollama:[/dim]")
-            for i, model_name in enumerate(available_models[:10], 1):  # Show first 10
-                console.print(f"  {i}. {model_name}")
-            if len(available_models) > 10:
-                console.print(f"  ... and {len(available_models) - 10} more")
+        if not available_models:
+            console.print("[yellow]⚠️  No models found in Ollama. Please install at least one model.[/yellow]")
+            console.print("[dim]Example: ollama pull mistral:latest[/dim]\n")
+            selected_model = "mistral:latest"  # Fallback
+        else:
+            # Show available models with numbers
+            console.print(f"[dim]Found {len(available_models)} model(s) in Ollama:[/dim]\n")
+            for i, model_name in enumerate(available_models, 1):
+                # Highlight recommended models
+                is_recommended = any(keyword in model_name.lower() for keyword in ["pentest", "qwen2", "deepseek"])
+                marker = " ⭐ (recommended)" if is_recommended else ""
+                console.print(f"  {i}. {model_name}{marker}")
+            
             console.print("")
-        
-        # Predefined popular models
-        predefined_models = {
-            "1": ("mistral:latest", "Mistral 7B (default)"),
-            "2": ("llama3.1:8b", "Llama 3.1 8B (less refusal)"),
-            "3": ("deepseek-v2:7b", "DeepSeek-V2 7B (technical)"),
-            "4": ("qwen2_pentest:latest", "Qwen2 Pentest (fine-tuned, recommended for pentest)"),
-            "5": (None, "Custom Ollama model")
-        }
-        
-        # Show predefined options
-        for key, (model_name, display_name) in predefined_models.items():
-            if key == "5":
-                console.print(f"{key}. {display_name}")
-            else:
-                exists_marker = " ✅" if model_name and check_model_exists(model_name) else ""
-                console.print(f"{key}. {display_name}{exists_marker}")
-        
-        model_choice = safe_prompt_ask("\n[dim]Select analysis model (1-5, default: 1)[/dim]", default="1")
+            
+            # Get user selection
+            max_choice = len(available_models)
+            model_choice = safe_prompt_ask(
+                f"[dim]Select analysis model (1-{max_choice}, default: 1)[/dim]",
+                default="1"
+            )
     except KeyboardInterrupt:
         console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
         sys.exit(0)
     except Exception as e:
         # Fallback if Ollama detection fails
         console.print(f"[yellow]⚠️  Could not detect Ollama models: {e}[/yellow]")
-        console.print("\n[bold cyan]Model Selection[/bold cyan]")
-        console.print("1. Mistral 7B (default)")
-        console.print("2. Llama 3.1 8B (less refusal)")
-        console.print("3. DeepSeek-V2 7B (technical)")
-        console.print("4. Qwen2 Pentest (fine-tuned, recommended for pentest)")
-        console.print("5. Custom Ollama model")
-        
-        try:
-            model_choice = safe_prompt_ask("\n[dim]Select analysis model (1-5, default: 1)[/dim]", default="1")
-        except KeyboardInterrupt:
-            console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
-            sys.exit(0)
-    
-    model_map = {
-        "1": "mistral:latest",
-        "2": "llama3.1:8b",
-        "3": "deepseek-v2:7b",
-        "4": "qwen2_pentest:latest",  # Fine-tuned Qwen2 for pentest
-        "5": None  # Will ask for custom
-    }
-    
-    selected_model = model_map.get(model_choice, "mistral:latest")
-    
-    if model_choice == "5":
-        try:
-            # Show available models if we have them
-            if available_models:
-                console.print("\n[dim]Available models:[/dim]")
-                for i, model_name in enumerate(available_models, 1):
-                    console.print(f"  {i}. {model_name}")
-                console.print("")
-            
-            selected_model = safe_prompt_ask("[dim]Enter Ollama model name (e.g., llama3.1:8b)[/dim]")
-        except KeyboardInterrupt:
-            console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
-            sys.exit(0)
+        console.print("[dim]Using default model: mistral:latest[/dim]")
+        selected_model = "mistral:latest"
     
     console.print(f"[green]✅ Using analysis model: {selected_model}[/green]")
     

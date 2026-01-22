@@ -140,7 +140,6 @@ class PgVectorStore:
         
         # Validate embeddings
         if not embeddings or len(embeddings) == 0:
-            # Try fallback embedding model using LangChain
             try:
                 from models.llm_client import OllamaEmbeddingClient
                 fallback_client = OllamaEmbeddingClient(model_name="nomic-embed-text")
@@ -271,8 +270,16 @@ class PgVectorStore:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # Convert embedding to PostgreSQL vector format
-            # Ensure all values are numeric before conversion
-            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+            # Ensure all values are numeric and properly formatted
+            try:
+                # Convert to list of floats first
+                embedding_floats = [float(x) for x in query_embedding]
+                # Format as PostgreSQL vector: [1.0,2.0,3.0,...]
+                embedding_str = '[' + ','.join([str(f) for f in embedding_floats]) + ']'
+            except (ValueError, TypeError) as e:
+                import warnings
+                warnings.warn(f"Failed to format embedding vector: {str(e)}")
+                return []
             
             # Build WHERE clause for filters
             where_clauses = ["collection_name = %s"]
@@ -281,8 +288,14 @@ class PgVectorStore:
             if filter:
                 for key, value in filter.items():
                     if key == 'conversation_id':
-                        where_clauses.append("conversation_id = %s")
-                        params.append(value)
+                        if not (self.collection_name.startswith("conversation_") and 
+                                str(value) in self.collection_name):
+                            where_clauses.append("conversation_id = %s")
+                            params.append(value)
+                    elif key == 'session_id':
+                        if not self.collection_name.startswith("conversation_"):
+                            where_clauses.append("metadata->>%s = %s")
+                            params.extend([key, str(value)])
                     else:
                         # Use JSONB path query for metadata fields
                         where_clauses.append(f"metadata->>%s = %s")
@@ -290,17 +303,8 @@ class PgVectorStore:
             
             where_sql = " AND ".join(where_clauses)
             
-            # Perform cosine similarity search using pgvector
-            # IMPORTANT: Build params in correct order for SQL placeholders
-            # SQL placeholders order:
-            # 1. WHERE clause params (collection_name, filters)
-            # 2. SELECT embedding <=> %s::vector (first embedding)
-            # 3. ORDER BY embedding <=> %s::vector (second embedding)
-            # 4. LIMIT %s (k)
-            
-            # Build complete params list in correct order
-            complete_params = params.copy()  # WHERE clause params
-            complete_params.extend([embedding_str, embedding_str, k])  # Add embedding and limit params
+            complete_params = params.copy() 
+            complete_params.extend([embedding_str, embedding_str, k])  
             
             query_sql = """
                 SELECT 
