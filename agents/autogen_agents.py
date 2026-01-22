@@ -25,26 +25,25 @@ class AutoGenAgent:
         self.config = config
         self.name = config['name']
         self.description = config['description']
-        self.model_name = config['model']
+        self.model_name = config.get('model', '') or ''
+        self.fallback_model = config.get('fallback_model', '') or ''
         self.tool_categories = config.get('tool_categories', [])
         
-        # Initialize model agent
-        if self.model_name == "qwen3" or self.model_name == "mistral":
-            # Use Mistral for general analysis (replacing Qwen3)
-            self.model_agent = GenericOllamaAgent(
-                model_name="mistral:latest",
-                prompt_template="qwen3_system.jinja2"
-            )
-        elif self.model_name == "functiongemma":
-            # FunctionGemma removed - use tool calling registry instead
+        # Resolve model name with flexible support (aliases, env vars, dynamic resolution)
+        resolved_model = self._resolve_model_name(self.model_name, self.fallback_model)
+        
+        # Initialize model agent based on resolved model
+        # Check for special agent types first
+        if resolved_model.startswith("deepseek-r1") or resolved_model.startswith("deepseek_r1"):
+            self.model_agent = DeepSeekAgent()
+        elif resolved_model == "json_tool_calling" or self.model_name == "functiongemma":
+            # Tool calling registry (legacy functiongemma support)
             tool_registry = get_tool_calling_registry()
             self.model_agent = tool_registry.get_model("json_tool_calling")
-        elif self.model_name == "deepseek_r1":
-            self.model_agent = DeepSeekAgent()
         else:
-            # Default to Mistral
+            # Use GenericOllamaAgent for any Ollama model (flexible)
             self.model_agent = GenericOllamaAgent(
-                model_name="mistral:latest",
+                model_name=resolved_model,
                 prompt_template="qwen3_system.jinja2"
             )
         
@@ -58,6 +57,132 @@ class AutoGenAgent:
         self.registry = get_registry()
         self.executor = get_executor()
         self.available_tools = self.registry.get_tools_for_agent(self.name.lower().replace(' ', '_'))
+        
+        # Reference to coordinator (set by coordinator after initialization)
+        self.coordinator: Optional['AutoGenCoordinator'] = None
+    
+    def _resolve_model_name(self, model_name: str, fallback_model: Optional[str] = None) -> str:
+        """Resolve model name to actual Ollama model name.
+        
+        Supports:
+        - Direct Ollama model names (e.g., "mistral:latest", "qwen2-pentest-v2:latest")
+        - Aliases (e.g., "mistral" -> "mistral:latest", "deepseek_r1" -> "deepseek-r1:latest")
+        - Environment variable overrides (e.g., RECON_AGENT_MODEL)
+        - Fallback to fallback_model if primary not available
+        - Empty string -> uses default from models.yaml
+        
+        Args:
+            model_name: Model name from config (can be alias, full name, or empty)
+            fallback_model: Fallback model name if primary not available
+            
+        Returns:
+            Resolved Ollama model name
+        """
+        import os
+        from utils.ollama_helper import get_model_names, check_model_exists
+        
+        # Check for environment variable override (e.g., RECON_AGENT_MODEL)
+        agent_env_key = f"{self.name.upper().replace(' ', '_')}_MODEL"
+        env_model = os.getenv(agent_env_key)
+        if env_model:
+            if check_model_exists(env_model):
+                return env_model
+            # Try to resolve as alias
+            resolved = self._resolve_alias(env_model)
+            if check_model_exists(resolved):
+                return resolved
+        
+        # If model_name is empty, try to get default from models.yaml
+        if not model_name or model_name.strip() == "":
+            try:
+                from config import load_config
+                config = load_config()
+                defaults = config.get('models', {}).get('defaults', {})
+                # Try to get default based on agent role
+                if "recon" in self.name.lower():
+                    model_name = defaults.get('analysis_model', 'mistral:latest')
+                elif "exploit" in self.name.lower():
+                    model_name = defaults.get('synthesis_model', 'deepseek-r1:latest')
+                else:
+                    model_name = defaults.get('analysis_model', 'mistral:latest')
+            except Exception:
+                model_name = "mistral:latest"  # Ultimate fallback
+        
+        # Check if it's already a full model name (contains :)
+        if ":" in model_name:
+            # Direct model name, check if exists
+            if check_model_exists(model_name):
+                return model_name
+            # Try fallback
+            if fallback_model:
+                resolved_fallback = self._resolve_alias(fallback_model)
+                if check_model_exists(resolved_fallback):
+                    return resolved_fallback
+        
+        # Try to resolve as alias
+        resolved = self._resolve_alias(model_name)
+        if check_model_exists(resolved):
+            return resolved
+        
+        # Try fallback
+        if fallback_model:
+            resolved_fallback = self._resolve_alias(fallback_model)
+            if check_model_exists(resolved_fallback):
+                return resolved_fallback
+        
+        # Last resort: try to find similar model
+        available_models = get_model_names()
+        if available_models:
+            # Try to find model that starts with the alias
+            for available in available_models:
+                if model_name.lower() in available.lower() or available.lower().startswith(model_name.lower()):
+                    return available
+            # Use first available model
+            return available_models[0]
+        
+        # Ultimate fallback
+        return "mistral:latest"
+    
+    def _resolve_alias(self, model_name: str) -> str:
+        """Resolve model alias to full model name.
+        
+        Args:
+            model_name: Model name or alias
+            
+        Returns:
+            Resolved model name
+        """
+        # Load aliases from models.yaml if available
+        alias_map = {
+            "mistral": "mistral:latest",
+            "qwen3": "mistral:latest",
+            "llama3.1": "llama3.1:8b",
+            "llama3": "llama3.1:8b",
+            "deepseek_r1": "deepseek-r1:latest",
+            "deepseek": "deepseek-r1:latest",
+            "qwen2": "qwen2.5:latest",
+            "qwen2_pentest": "qwen2-pentest-v2:latest",
+        }
+        
+        # Try to load from models.yaml
+        try:
+            from config import load_config
+            config = load_config()
+            yaml_aliases = config.get('models', {}).get('aliases', {})
+            alias_map.update(yaml_aliases)
+        except Exception:
+            pass  # Use default aliases
+        
+        # If already contains :, return as is
+        if ":" in model_name:
+            return model_name
+        
+        # Check alias map
+        if model_name.lower() in alias_map:
+            return alias_map[model_name.lower()]
+        
+        # If not in alias map, try adding :latest
+        return f"{model_name}:latest"
     
     def execute(self, task: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute agent task.

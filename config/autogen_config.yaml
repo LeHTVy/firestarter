@@ -2,8 +2,13 @@ agents:
   recon_agent:
     name: "Recon Agent"
     description: "Chuyên về reconnaissance tasks (network scanning, OSINT)"
-    model: ""  
-    fallback_model: "" 
+    # Model can be:
+    # - Direct Ollama model name (e.g., "mistral:latest", "qwen2-pentest-v2:latest")
+    # - Alias (e.g., "mistral" → resolves to "mistral:latest")
+    # - Empty string "" → uses default from models.yaml or environment variable
+    # - Environment variable: RECON_AGENT_MODEL="qwen2-pentest-v2:latest"
+    model: "mistral:latest"  # Default, can be overridden via env var RECON_AGENT_MODEL
+    fallback_model: "mistral:latest"  # Fallback if primary model not available
     system_prompt_file: "prompts/autogen_recon.jinja2"
     tool_categories:
       - "recon"
@@ -21,8 +26,8 @@ agents:
   exploit_agent:
     name: "Exploit Agent"
     description: "Chuyên về exploit research và execution"
-    model: ""  
-    fallback_model: ""
+    model: "deepseek-r1:latest"  # Default, can be overridden via env var EXPLOIT_AGENT_MODEL
+    fallback_model: "mistral:latest"
     system_prompt_file: "prompts/autogen_exploit.jinja2"
     tool_categories:
       - "exploitation"
@@ -39,8 +44,8 @@ agents:
   analysis_agent:
     name: "Analysis Agent"
     description: "Phân tích kết quả, vulnerability assessment"
-    model: ""
-    fallback_model: ""
+    model: "mistral:latest"  # Default, can be overridden via env var ANALYSIS_AGENT_MODEL
+    fallback_model: "deepseek-r1:latest"
     system_prompt_file: "prompts/autogen_analysis.jinja2"
     tool_categories:
       - "malware_analysis"

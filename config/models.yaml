@@ -1,66 +1,56 @@
-# Model role assignments and configurations
+# Model Configuration Templates
+# 
+# This file defines model configuration templates (temperature, top_p, etc.)
+# Actual model names are resolved dynamically from Ollama or specified in autogen_config.yaml
+#
+# Model names can be:
+# - Direct Ollama model names (e.g., "mistral:latest", "qwen2-pentest-v2:latest")
+# - Aliases that resolve to full names (e.g., "mistral" → "mistral:latest")
+# - Environment variable overrides (e.g., RECON_AGENT_MODEL="qwen2-pentest-v2:latest")
 
-models:
-  mistral:
-    role: "task_analysis"
-    description: "Task analysis, breakdown user prompt thành subtasks, xác định tool/search/knowledge cần thiết"
-    use_cases:
-      - "Task breakdown and analysis"
-      - "Subtask generation"
-      - "Tool selection reasoning"
-      - "Answer synthesis"
-    config:
-      temperature: 0.85
-      top_p: 0.95
-      top_k: 50
-      num_predict: 2048
-      
-  deepseek_r1:
-    role: "web_search_synthesis"
-    description: "Web search orchestration, content extraction, cross-verification, answer synthesis"
-    use_cases:
-      - "Web search aggregation"
-      - "Content extraction and analysis"
-      - "Cross-source verification"
-      - "Answer synthesis from multiple sources"
-    config:
-      temperature: 0.7
-      top_p: 0.9
-      top_k: 40
-      num_predict: 4096
-      
-  functiongemma:
-    role: "function_calling"
-    description: "Function calling chuyên biệt, gọi security tools dựa trên semantic understanding"
-    use_cases:
-      - "Tool selection and calling"
-      - "Function parameter extraction"
-      - "Multi-turn tool execution"
-    config:
-      temperature: 0.0
-      top_p: 0.9
-      top_k: 40
-      num_predict: 512
-  
-  qwen2_pentest:
-    role: "task_analysis_and_tool_execution"
-    description: "Fine-tuned Qwen2 model chuyên biệt cho pentest, hỗ trợ cả task analysis và tool execution"
-    use_cases:
-      - "Task breakdown and analysis"
-      - "Subtask generation"
-      - "Tool selection and calling"
-      - "Function parameter extraction"
-      - "Answer synthesis"
-    config:
-      temperature: 0.3
-      top_p: 0.9
-      top_k: 40
-      num_predict: 2048
+# Default model configurations (used as templates)
+default_configs:
+  # General purpose / task analysis
+  task_analysis:
+    temperature: 0.85
+    top_p: 0.95
+    top_k: 50
+    num_predict: 2048
+    
+  # Web search and synthesis
+  web_search_synthesis:
+    temperature: 0.7
+    top_p: 0.9
+    top_k: 40
+    num_predict: 4096
+    
+  # Tool calling / function calling
+  function_calling:
+    temperature: 0.0
+    top_p: 0.9
+    top_k: 40
+    num_predict: 512
+    
+  # Pentest specialized
+  pentest_specialized:
+    temperature: 0.3
+    top_p: 0.9
+    top_k: 40
+    num_predict: 2048
 
-# Model selection strategy
-selection:
-  default_model: "mistral:latest"  # Change to "qwen2_pentest:latest" to use as default
-  fallback_model: "deepseek_r1"
+# Model aliases (for backward compatibility and convenience)
+aliases:
+  mistral: "mistral:latest"
+  qwen3: "mistral:latest"  # Legacy alias
+  deepseek_r1: "deepseek-r1:latest"
+  qwen2_pentest: "qwen2-pentest-v2:latest"
+  functiongemma: "json_tool_calling"  # Legacy - now uses tool calling registry
+
+# Default model selection
+defaults:
+  analysis_model: "mistral:latest"  # For task analysis
+  synthesis_model: "deepseek-r1:latest"  # For answer synthesis
+  tool_calling_model: "json_tool_calling"  # For tool execution
   
 # Model availability check
 availability:
