@@ -1,6 +1,10 @@
-"""Tool Execution Node - Handles tool execution with JSON tool calling and fallback."""
+"""Tool Execution Node - Handles tool execution with policy validation.
 
-from typing import Dict, Any, Optional, Callable
+Combines tool execution and policy checks into a single module.
+Inspired by rutx approach for simple, direct tool execution.
+"""
+
+from typing import Dict, Any, Optional, Callable, List
 from tools.executor import get_executor
 from agents.tool_feedback_tracker import ToolFeedbackTracker
 from agents.result_analyzer import ResultAnalyzer
@@ -8,12 +12,14 @@ from agents.feedback_learner import FeedbackLearner
 
 
 class ToolExecutorNode:
-    """Node for executing tools with JSON tool calling and fallback to direct execution."""
+    """Node for executing tools with policy validation and fallback."""
     
     def __init__(self, 
                  context_manager,
                  memory_manager,
                  results_storage,
+                 policy_engine=None,
+                 mode_manager=None,
                  stream_callback: Optional[Callable[[str, str, Any], None]] = None,
                  tool_calling_model: Optional[str] = None):
         """Initialize tool executor node.
@@ -22,29 +28,36 @@ class ToolExecutorNode:
             context_manager: Context manager instance
             memory_manager: Memory manager instance
             results_storage: Results storage instance
+            policy_engine: Optional policy engine for validation
+            mode_manager: Optional mode manager for execution mode
             stream_callback: Optional streaming callback
-            tool_calling_model: Optional tool calling model name (default: json_tool_calling)
+            tool_calling_model: Optional tool calling model name
         """
         self.context_manager = context_manager
         self.memory_manager = memory_manager
         self.results_storage = results_storage
+        self.policy_engine = policy_engine
+        self.mode_manager = mode_manager
         self.stream_callback = stream_callback
         self.executor = get_executor()
-        self.feedback_tracker = ToolFeedbackTracker()  # Track tool execution feedback
-        self.result_analyzer = ResultAnalyzer()  # Analyze results and suggest next tools
-        self.feedback_learner = FeedbackLearner(feedback_tracker=self.feedback_tracker)  # Learn from feedback
         
-        # Initialize tool calling registry
+        # Feedback tracking
+        self.feedback_tracker = ToolFeedbackTracker()
+        self.result_analyzer = ResultAnalyzer()
+        self.feedback_learner = FeedbackLearner(feedback_tracker=self.feedback_tracker)
+        
+        # Tool calling registry (optional - for semantic tool selection)
         from models.tool_calling_registry import get_tool_calling_registry
         self.tool_calling_registry = get_tool_calling_registry()
         self.tool_calling_model_name = tool_calling_model or "json_tool_calling"
     
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute tools from subtasks.
+        """Execute tools from subtasks with policy validation.
         
         Strategy:
-        1. Try JSON tool calling model to call tools (preferred - semantic tool selection)
-        2. If tool calling model doesn't call tools, fallback to direct execution from registry
+        1. Validate tools against policy
+        2. Try tool calling model for semantic selection
+        3. Fallback to direct execution if model doesn't call tools
         
         Args:
             state: Graph state with subtasks
@@ -53,281 +66,318 @@ class ToolExecutorNode:
             Updated state with tool_results
         """
         subtasks = state.get("subtasks", [])
-        tool_results = []
         
-        # Create streaming callbacks
-        model_callback = None
-        tool_stream_callback = None
+        # Get target and validate policy
+        target = self._get_target(state)
+        conversation_id = state.get("conversation_id") or state.get("session_id")
         
-        if self.stream_callback:
-            def model_cb(chunk: str):
-                self.stream_callback("model_response", self.tool_calling_model_name, chunk)
-            model_callback = model_cb
-            
-            def tool_cb(tool_name: str, command_name: str, line: str):
-                self.stream_callback("tool_output", f"{tool_name}:{command_name}" if command_name else tool_name, line)
-            tool_stream_callback = tool_cb
+        # Validate subtasks against policy
+        if self.policy_engine and self.mode_manager:
+            execution_mode = self.mode_manager.get_mode(conversation_id)
+            subtasks = self._validate_subtasks(subtasks, target, conversation_id, execution_mode)
+            state["subtasks"] = subtasks
         
-        # Get verified target from session context
-        session_context = self.context_manager.get_context(state.get("session_context"))
-        verified_target = None
-        if session_context:
-            verified_target = session_context.get_target()
-        
-        # Extract targets from user prompt
-        user_prompt_original = state.get("user_prompt", "")
-        from utils.input_normalizer import InputNormalizer
-        normalizer = InputNormalizer()
-        normalized = normalizer.normalize_input(user_prompt_original, verify_domains=False)
-        targets = normalized.get("targets", [])
-        
-        # Prefer verified target if available
-        if verified_target and verified_target not in targets:
-            targets.insert(0, verified_target)
-        
-        # Process each subtask
-        for subtask in subtasks:
-            subtask_id = subtask.get("id")
-            if subtask.get("type") == "tool_execution":
-                tools = subtask.get("required_tools", [])
-                subtask_description = subtask.get("description", "")
-                subtask_name = subtask.get("name", "")
-                
-                targets_str = ", ".join(targets) if targets else "target from user request"
-                
-                # Include conversation context in tool prompt
-                conversation_context = ""
-                conversation_history = state.get("conversation_history", [])
-                if conversation_history:
-                    recent = conversation_history[-3:]
-                    conversation_context = "\n".join([
-                        f"{msg.get('role', 'unknown')}: {msg.get('content', '')[:200]}" 
-                        for msg in recent
-                    ])
-                
-                # Try tool calling model first (preferred - semantic tool selection)
-                for tool_name in tools:
-                    # Build comprehensive prompt for tool calling with context
-                    tool_prompt = f"""Execute {tool_name} for the following task:
-Task: {subtask_name}
-Description: {subtask_description}
-Target: {targets_str}
-Original request: {user_prompt_original}"""
-                    
-                    if conversation_context:
-                        tool_prompt += f"\n\nRecent conversation context:\n{conversation_context}"
-                    
-                    tool_prompt += "\n\nExtract the required parameters from the context above and execute the tool with appropriate values. For example, if the target is a domain like \"hellogroup.co.za\", use it as the \"domain\" parameter."
-                    
-                    # Get tool calling model from registry
-                    tool_calling_agent = self.tool_calling_registry.get_model(self.tool_calling_model_name)
-                    
-                    result = tool_calling_agent.call_with_tools(
-                        user_prompt=tool_prompt,
-                        tools=tools,  # Pass specific tools
-                        agent=state.get("selected_agent"),
-                        session_id=state.get("conversation_id") or state.get("session_id"),
-                        conversation_history=state.get("conversation_history", []),
-                        stream_callback=model_callback,
-                        tool_stream_callback=tool_stream_callback
-                    )
-                    
-                    # Check if tool calling model actually called tools
-                    if result.get("tool_results") and len(result["tool_results"]) > 0:
-                        # Tool calling model successfully called tools
-                        for tr in result["tool_results"]:
-                            exec_result = tr.get("result", {})
-                            tool_results.append(exec_result)
-                            self._store_and_update_context(exec_result, state)
-                            
-                            # Track feedback for learning
-                            self.feedback_tracker.record_execution(
-                                tool_name=tool_name,
-                                success=exec_result.get("success", False),
-                                execution_time=exec_result.get("execution_time", 0.0),
-                                error=exec_result.get("error"),
-                                parameters=exec_result.get("parameters"),
-                                results=exec_result.get("results"),
-                                agent=state.get("selected_agent"),
-                                session_id=state.get("conversation_id") or state.get("session_id")
-                            )
-                            
-                            # Collect feedback for learning (with reasoning if available)
-                            reasoning = result.get("reasoning")
-                            self.feedback_learner.collect_feedback(
-                                tool_name=tool_name,
-                                success=exec_result.get("success", False),
-                                execution_time=exec_result.get("execution_time", 0.0),
-                                reasoning=reasoning,
-                                error=exec_result.get("error"),
-                                parameters=exec_result.get("parameters")
-                            )
-                    else:
-                        # FALLBACK: Tool calling model didn't call tools, execute directly from registry
-                        if self.stream_callback:
-                            self.stream_callback("model_response", "system", 
-                                f"⚠️ Tool calling model didn't call {tool_name}. Executing directly from registry...")
-                        
-                        # Prepare base parameters
-                        base_params = {}
-                        if targets:
-                            target = targets[0]
-                            base_params["domain"] = target
-                            base_params["target"] = target
-                            base_params["host"] = target
-                            # Build URL if domain
-                            if "." in target and not target.startswith("http"):
-                                base_params["url"] = f"https://{target}"
-                        
-                        # Try to extract additional params from subtask description
-                        subtask_desc = subtask_description.lower()
-                        if "port" in subtask_desc:
-                            # Extract port numbers if mentioned
-                            import re
-                            ports = re.findall(r'\b(\d{1,5})\b', subtask_desc)
-                            if ports:
-                                base_params["ports"] = ",".join(ports[:10])  # Limit to 10 ports
-                        
-                        # Execute tool directly via executor (fallback)
-                        if tool_stream_callback:
-                            def tool_callback(line: str):
-                                tool_stream_callback(tool_name, "", line)
-                            
-                            exec_result = self.executor.execute_tool_streaming(
-                                tool_name=tool_name,
-                                parameters=base_params,
-                                stream_callback=tool_callback,
-                                agent=state.get("selected_agent"),
-                                session_id=state.get("conversation_id") or state.get("session_id")
-                            )
-                        else:
-                            exec_result = self.executor.execute_tool(
-                                tool_name=tool_name,
-                                parameters=base_params,
-                                agent=state.get("selected_agent"),
-                                session_id=state.get("conversation_id") or state.get("session_id")
-                            )
-                        
-                        tool_results.append(exec_result)
-                        self._store_and_update_context(exec_result, state)
-                        
-                        # Track feedback for learning
-                        self.feedback_tracker.record_execution(
-                            tool_name=tool_name,
-                            success=exec_result.get("success", False),
-                            execution_time=exec_result.get("execution_time", 0.0),
-                            error=exec_result.get("error"),
-                            parameters=exec_result.get("parameters"),
-                            results=exec_result.get("results"),
-                            agent=state.get("selected_agent"),
-                            session_id=state.get("conversation_id") or state.get("session_id")
-                        )
-                        
-                        # Collect feedback for learning
-                        self.feedback_learner.collect_feedback(
-                            tool_name=tool_name,
-                            success=exec_result.get("success", False),
-                            execution_time=exec_result.get("execution_time", 0.0),
-                            reasoning=None,  # No reasoning from fallback execution
-                            error=exec_result.get("error"),
-                            parameters=exec_result.get("parameters")
-                        )
-        
+        # Execute tools
+        tool_results = self._execute_subtasks(state, subtasks, target)
         state["tool_results"] = tool_results
         
-        # MULTI-TURN: Analyze results and suggest next tools (probe → observe → adapt)
-        if tool_results:
-            analysis = self.result_analyzer.analyze_results(tool_results)
-            
-            # Store analysis in state
-            state["result_analysis"] = analysis
-            
-            # If we have findings and suggested tools, add follow-up subtasks
-            suggested_tools = analysis.get("suggested_tools", [])
-            if suggested_tools and len(suggested_tools) > 0:
-                # Check if we should continue (multi-turn execution)
-                # Only add follow-up if we have meaningful findings
-                findings = analysis.get("findings", {})
-                has_findings = any(
-                    findings.get(key) and len(findings[key]) > 0
-                    for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies"]
-                )
-                
-                if has_findings:
-                    follow_up_subtasks = self.result_analyzer.get_next_subtasks(
-                        findings=findings,
-                        suggested_tools=suggested_tools
-                    )
-                    
-                    # Add follow-up subtasks to state (will be processed in next iteration if enabled)
-                    existing_subtasks = state.get("subtasks", [])
-                    state["follow_up_subtasks"] = follow_up_subtasks
-                    
-                    if self.stream_callback:
-                        summary = analysis.get("summary", "No summary")
-                        self.stream_callback("model_response", "system", 
-                            f"📊 Analysis: {summary}")
-                        self.stream_callback("model_response", "system", 
-                            f"💡 Suggested next tools: {', '.join(suggested_tools[:3])}")
-        
-        # Mark completed subtasks as done in session memory
-        if self.memory_manager and self.memory_manager.session_memory:
-            # Get subtask IDs that had successful tool executions
-            completed_subtask_ids = set()
-            for result in tool_results:
-                if result.get("success"):
-                    # Try to find matching subtask by tool name
-                    tool_name = result.get("tool_name", "")
-                    for subtask in subtasks:
-                        if tool_name in subtask.get("required_tools", []):
-                            subtask_id = subtask.get("id")
-                            if subtask_id:
-                                completed_subtask_ids.add(subtask_id)
-            
-            # Mark subtasks as completed
-            for subtask_id in completed_subtask_ids:
-                self.memory_manager.session_memory.agent_context.complete_task(subtask_id)
+        # Analyze results for multi-turn
+        self._analyze_results(state, tool_results, subtasks)
         
         return state
     
-    def _store_and_update_context(self, exec_result: Dict[str, Any], state: Dict[str, Any]):
-        """Store tool result and update context with findings.
+    def _get_target(self, state: Dict[str, Any]) -> Optional[str]:
+        """Get target from session context or state."""
+        session_context = self.context_manager.get_context(state.get("session_context"))
+        if session_context:
+            return session_context.get_target()
+        return None
+    
+    def _validate_subtasks(self, subtasks: List[Dict], target: Optional[str],
+                          conversation_id: Optional[str], execution_mode) -> List[Dict]:
+        """Validate subtasks against policy."""
+        from tools.registry import get_tool_registry
+        from agents.policy_engine import PolicyDecision
         
-        Args:
-            exec_result: Tool execution result
-            state: Graph state
-        """
-        if not exec_result.get("success"):
+        tool_registry = get_tool_registry()
+        validated = []
+        
+        for subtask in subtasks:
+            if subtask.get("type") != "tool_execution":
+                validated.append(subtask)
+                continue
+            
+            tool_names = subtask.get("required_tools", [])
+            validated_tools = []
+            
+            for tool_name in tool_names:
+                tool = tool_registry.get_tool(tool_name)
+                if not tool:
+                    continue
+                
+                # Policy check if target exists
+                if target and self.policy_engine:
+                    result = self.policy_engine.check_tool_execution(
+                        tool=tool, target=target,
+                        conversation_id=conversation_id,
+                        execution_mode=execution_mode
+                    )
+                    
+                    if result.decision == PolicyDecision.DENIED:
+                        if self.stream_callback:
+                            self.stream_callback("model_response", "system",
+                                f"⚠️ Tool '{tool_name}' denied: {result.reason}")
+                        continue
+                
+                validated_tools.append(tool_name)
+            
+            if validated_tools:
+                subtask_copy = subtask.copy()
+                subtask_copy["required_tools"] = validated_tools
+                validated.append(subtask_copy)
+        
+        return validated
+    
+    def _execute_subtasks(self, state: Dict[str, Any], subtasks: List[Dict],
+                         target: Optional[str]) -> List[Dict]:
+        """Execute all tool subtasks."""
+        tool_results = []
+        
+        # Create callbacks
+        model_callback = self._create_model_callback()
+        tool_stream_callback = self._create_tool_callback()
+        
+        # Get targets
+        targets = self._extract_targets(state, target)
+        
+        for subtask in subtasks:
+            if subtask.get("type") != "tool_execution":
+                continue
+            
+            tools = subtask.get("required_tools", [])
+            
+            for tool_name in tools:
+                result = self._execute_single_tool(
+                    state, subtask, tool_name, targets,
+                    model_callback, tool_stream_callback
+                )
+                
+                if result:
+                    tool_results.append(result)
+                    self._store_result(result, state)
+                    self._track_feedback(result, tool_name, state)
+        
+        return tool_results
+    
+    def _execute_single_tool(self, state: Dict, subtask: Dict, tool_name: str,
+                            targets: List[str], model_callback, tool_stream_callback) -> Optional[Dict]:
+        """Execute a single tool with fallback."""
+        user_prompt = state.get("user_prompt", "")
+        subtask_name = subtask.get("name", "")
+        subtask_desc = subtask.get("description", "")
+        targets_str = ", ".join(targets) if targets else "target"
+        
+        # Build tool prompt
+        tool_prompt = f"""Execute {tool_name}:
+Task: {subtask_name}
+Description: {subtask_desc}
+Target: {targets_str}
+Request: {user_prompt}
+
+Extract parameters from context and execute the tool."""
+        
+        # Try tool calling model first
+        try:
+            tool_calling_agent = self.tool_calling_registry.get_model(self.tool_calling_model_name)
+            
+            result = tool_calling_agent.call_with_tools(
+                user_prompt=tool_prompt,
+                tools=[tool_name],
+                agent=state.get("selected_agent"),
+                session_id=state.get("conversation_id") or state.get("session_id"),
+                conversation_history=state.get("conversation_history", []),
+                stream_callback=model_callback,
+                tool_stream_callback=tool_stream_callback
+            )
+            
+            # Check if model called tools
+            if result.get("tool_results") and len(result["tool_results"]) > 0:
+                return result["tool_results"][0].get("result", {})
+        except Exception as e:
+            if self.stream_callback:
+                self.stream_callback("model_response", "system", f"⚠️ Tool calling error: {e}")
+        
+        # FALLBACK: Direct execution
+        if self.stream_callback:
+            self.stream_callback("model_response", "system", 
+                f"📦 Executing {tool_name} directly...")
+        
+        return self._execute_direct(tool_name, targets, subtask_desc, state, tool_stream_callback)
+    
+    def _execute_direct(self, tool_name: str, targets: List[str], description: str,
+                       state: Dict, tool_stream_callback) -> Dict:
+        """Execute tool directly without model."""
+        # Build parameters
+        params = {}
+        if targets:
+            target = targets[0]
+            params["target"] = target
+            params["domain"] = target
+            params["host"] = target
+            if "." in target and not target.startswith("http"):
+                params["url"] = f"https://{target}"
+        
+        # Extract ports if mentioned
+        import re
+        desc_lower = description.lower()
+        if "port" in desc_lower:
+            ports = re.findall(r'\b(\d{1,5})\b', desc_lower)
+            if ports:
+                params["ports"] = ",".join(ports[:10])
+        
+        # Execute with streaming
+        if tool_stream_callback:
+            def callback(line: str):
+                tool_stream_callback(tool_name, "", line)
+            
+            return self.executor.execute_tool_streaming(
+                tool_name=tool_name,
+                parameters=params,
+                stream_callback=callback,
+                agent=state.get("selected_agent"),
+                session_id=state.get("conversation_id") or state.get("session_id")
+            )
+        else:
+            return self.executor.execute_tool(
+                tool_name=tool_name,
+                parameters=params,
+                agent=state.get("selected_agent"),
+                session_id=state.get("conversation_id") or state.get("session_id")
+            )
+    
+    def _extract_targets(self, state: Dict, verified_target: Optional[str]) -> List[str]:
+        """Extract targets from state."""
+        from utils.input_normalizer import InputNormalizer
+        
+        normalizer = InputNormalizer()
+        normalized = normalizer.normalize_input(state.get("user_prompt", ""), verify_domains=False)
+        targets = normalized.get("targets", [])
+        
+        if verified_target and verified_target not in targets:
+            targets.insert(0, verified_target)
+        
+        return targets
+    
+    def _store_result(self, result: Dict, state: Dict) -> None:
+        """Store tool result."""
+        if not result.get("success"):
             return
         
-        # Store in results storage
         self.results_storage.store_result(
-            tool_name=exec_result.get("tool_name", ""),
-            parameters=exec_result.get("parameters", {}),
-            results=exec_result.get("results"),
+            tool_name=result.get("tool_name", ""),
+            parameters=result.get("parameters", {}),
+            results=result.get("results"),
             agent=state.get("selected_agent"),
             session_id=state.get("conversation_id") or state.get("session_id"),
             conversation_id=state.get("conversation_id"),
-            execution_id=exec_result.get("execution_id")
+            execution_id=result.get("execution_id")
         )
         
-        # Update agent context with findings from tool results
-        results = exec_result.get("results", {})
+        # Update context with findings
+        results = result.get("results", {})
         if isinstance(results, dict):
-            # Extract findings from results
             findings = {}
-            if "subdomains" in results:
-                findings["subdomains"] = results["subdomains"]
-            if "ips" in results:
-                findings["ips"] = results["ips"]
-            if "open_ports" in results:
-                findings["open_ports"] = results["open_ports"]
-            if "vulnerabilities" in results:
-                findings["vulnerabilities"] = results["vulnerabilities"]
-            if "technologies" in results:
-                findings["technologies"] = results["technologies"]
+            for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies"]:
+                if key in results:
+                    findings[key] = results[key]
             
             if findings:
                 self.memory_manager.update_agent_context(findings)
-                # Update session context
                 self.context_manager.update_context(findings)
+    
+    def _track_feedback(self, result: Dict, tool_name: str, state: Dict) -> None:
+        """Track execution feedback."""
+        self.feedback_tracker.record_execution(
+            tool_name=tool_name,
+            success=result.get("success", False),
+            execution_time=result.get("execution_time", 0.0),
+            error=result.get("error"),
+            parameters=result.get("parameters"),
+            results=result.get("results"),
+            agent=state.get("selected_agent"),
+            session_id=state.get("conversation_id") or state.get("session_id")
+        )
+        
+        self.feedback_learner.collect_feedback(
+            tool_name=tool_name,
+            success=result.get("success", False),
+            execution_time=result.get("execution_time", 0.0),
+            reasoning=None,
+            error=result.get("error"),
+            parameters=result.get("parameters")
+        )
+    
+    def _analyze_results(self, state: Dict, tool_results: List[Dict], subtasks: List[Dict]) -> None:
+        """Analyze results and suggest next tools."""
+        if not tool_results:
+            return
+        
+        analysis = self.result_analyzer.analyze_results(tool_results)
+        state["result_analysis"] = analysis
+        
+        # Check for follow-up suggestions
+        suggested_tools = analysis.get("suggested_tools", [])
+        findings = analysis.get("findings", {})
+        
+        has_findings = any(
+            findings.get(key) and len(findings[key]) > 0
+            for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies"]
+        )
+        
+        if has_findings and suggested_tools:
+            follow_ups = self.result_analyzer.get_next_subtasks(findings, suggested_tools)
+            state["follow_up_subtasks"] = follow_ups
+            
+            if self.stream_callback:
+                summary = analysis.get("summary", "Analysis complete")
+                self.stream_callback("model_response", "system", f"📊 {summary}")
+                self.stream_callback("model_response", "system", 
+                    f"💡 Suggested: {', '.join(suggested_tools[:3])}")
+        
+        # Mark completed subtasks
+        self._mark_completed(tool_results, subtasks)
+    
+    def _mark_completed(self, tool_results: List[Dict], subtasks: List[Dict]) -> None:
+        """Mark completed subtasks in session memory."""
+        if not self.memory_manager or not self.memory_manager.session_memory:
+            return
+        
+        for result in tool_results:
+            if not result.get("success"):
+                continue
+            
+            tool_name = result.get("tool_name", "")
+            for subtask in subtasks:
+                if tool_name in subtask.get("required_tools", []):
+                    subtask_id = subtask.get("id")
+                    if subtask_id:
+                        self.memory_manager.session_memory.agent_context.complete_task(subtask_id)
+    
+    def _create_model_callback(self) -> Optional[Callable]:
+        """Create model streaming callback."""
+        if not self.stream_callback:
+            return None
+        
+        def callback(chunk: str):
+            self.stream_callback("model_response", self.tool_calling_model_name, chunk)
+        return callback
+    
+    def _create_tool_callback(self) -> Optional[Callable]:
+        """Create tool streaming callback."""
+        if not self.stream_callback:
+            return None
+        
+        def callback(tool_name: str, command: str, line: str):
+            self.stream_callback("tool_output", 
+                f"{tool_name}:{command}" if command else tool_name, line)
+        return callback

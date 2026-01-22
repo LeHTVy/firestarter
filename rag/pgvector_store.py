@@ -229,13 +229,19 @@ class PgVectorStore:
         Returns:
             List of similar documents with metadata and distance scores
         """
+        # Validate query parameter - must be a string
+        if not isinstance(query, str):
+            import warnings
+            warnings.warn(f"Invalid query parameter: expected string, got {type(query)}. Query: {query}")
+            return []
+        
         # Generate query embedding with robust error handling
         query_embedding = None
         try:
             query_embedding = self.embeddings.embed_query(query)
         except Exception as e:
             import warnings
-            warnings.warn(f"Embedding generation failed: {str(e)}")
+            warnings.warn(f"Embedding generation failed for query '{query[:50]}...': {str(e)}")
         
         # Validate query embedding - must be a list/array of numbers
         if not query_embedding:
@@ -245,21 +251,27 @@ class PgVectorStore:
                 query_embedding = fallback_client.embed_query(query)
             except Exception as fallback_error:
                 import warnings
-                warnings.warn(f"Fallback embedding generation failed: {str(fallback_error)}")
+                warnings.warn(f"Fallback embedding generation failed for query '{query[:50]}...': {str(fallback_error)}")
                 return []
+        
+        # CRITICAL: Check if query_embedding is a string (which would be wrong)
+        if isinstance(query_embedding, str):
+            import warnings
+            warnings.warn(f"Invalid embedding: received string '{query_embedding[:100]}...' instead of vector. Query was: '{query[:50]}...'. This indicates a bug in embed_query.")
+            return []
         
         if not isinstance(query_embedding, (list, tuple)) or len(query_embedding) == 0:
             import warnings
-            warnings.warn(f"Invalid embedding format: expected list/array, got {type(query_embedding)}")
+            warnings.warn(f"Invalid embedding format: expected list/array, got {type(query_embedding)}. Query was: '{query[:50]}...'")
             return []
         
         # Validate all elements are numbers
         try:
             # Try to convert to float to ensure they're numeric
             _ = [float(x) for x in query_embedding]
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             import warnings
-            warnings.warn(f"Embedding contains non-numeric values")
+            warnings.warn(f"Embedding contains non-numeric values: {str(e)}. Query was: '{query[:50]}...'")
             return []
         
         # Build query with filters
