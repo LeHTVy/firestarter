@@ -4,7 +4,7 @@ import json
 from typing import Dict, Any, Optional, Callable, List
 from utils.input_normalizer import InputNormalizer
 from models.generic_ollama_agent import GenericOllamaAgent
-from models.functiongemma_agent import FunctionGemmaAgent
+# FunctionGemma removed - using tool calling registry instead
 from memory.manager import MemoryManager
 from agents.context_manager import ContextManager
 from rag.retriever import ConversationRetriever
@@ -13,10 +13,9 @@ from jinja2 import Environment, FileSystemLoader
 
 
 class TargetClarifier:
-    """Handles target clarification using FunctionGemma and web search."""
+    """Handles target clarification using tool calling and web search."""
     
     def __init__(self,
-                 functiongemma: FunctionGemmaAgent,
                  qwen3: GenericOllamaAgent,
                  memory_manager: MemoryManager,
                  context_manager: ContextManager,
@@ -24,18 +23,20 @@ class TargetClarifier:
         """Initialize target clarifier.
         
         Args:
-            functiongemma: FunctionGemma agent for tool calling
             qwen3: Generic Ollama agent for AI understanding (e.g., Mistral)
             memory_manager: Memory manager for session state
             context_manager: Context manager for session context
             stream_callback: Optional callback for streaming events
         """
-        self.functiongemma = functiongemma
         self.qwen3 = qwen3
         self.memory_manager = memory_manager
         self.context_manager = context_manager
         self.stream_callback = stream_callback
         self.conversation_retriever = ConversationRetriever()
+        
+        # Initialize tool calling registry
+        from models.tool_calling_registry import get_tool_calling_registry
+        self.tool_calling_registry = get_tool_calling_registry()
         
         # Initialize InputNormalizer for lexical normalization
         self.input_normalizer = InputNormalizer(ai_model=qwen3)
@@ -560,7 +561,7 @@ Return JSON:
             }
     
     def clarify_target(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Clarify ambiguous target using FunctionGemma and web search.
+        """Clarify ambiguous target using tool calling and web search.
         
         Pipeline:
         1. Lexical Normalize (RapidFuzz) - normalize user input
@@ -738,7 +739,7 @@ Return only valid JSON:"""
             # Generate intelligent search queries using LLM
             search_queries = self._generate_search_queries(company_name, location, user_prompt, context_text)
             
-            # Build prompt for FunctionGemma with explicit query suggestions
+            # Build prompt for tool calling with explicit query suggestions
             target_verification_prompt = f"""You need to find the official website domain for a company/organization.
 
 Company name: {company_name or 'unknown'}
@@ -763,15 +764,16 @@ Target: Find the official website domain for this company/organization."""
                 tool_stream_callback = None
                 if self.stream_callback:
                     def callback(chunk: str):
-                        self.stream_callback("model_response", "functiongemma_verify", chunk)
+                        self.stream_callback("model_response", "tool_calling_verify", chunk)
                     model_callback = callback
                     
                     def tool_callback(tool_name: str, command: str, line: str):
                         self.stream_callback("tool_execution", tool_name, line)
                     tool_stream_callback = tool_callback
                 
-                # Call FunctionGemma with web_search tool only
-                functiongemma_result = self.functiongemma.call_with_tools(
+                # Call tool calling model with web_search tool only
+                tool_calling_agent = self.tool_calling_registry.get_model()  # Get default model
+                tool_calling_result = tool_calling_agent.call_with_tools(
                     user_prompt=target_verification_prompt,
                     tools=["web_search"],
                     session_id=conversation_id,  # Use conversation_id
@@ -780,16 +782,16 @@ Target: Find the official website domain for this company/organization."""
                     tool_stream_callback=tool_stream_callback
                 )
                 
-                # Parse results from FunctionGemma
+                # Parse results from tool calling model
                 web_search_result = None  
                 tool_results = [] 
                 
-                if functiongemma_result.get("success"):
-                    tool_results = functiongemma_result.get("tool_results", [])
+                if tool_calling_result.get("success"):
+                    tool_results = tool_calling_result.get("tool_results", [])
                     
-                    # Check if FunctionGemma called web_search tool
+                    # Check if tool calling model called web_search tool
                     if not tool_results:
-                        # FunctionGemma didn't call any tool - fallback to asking user
+                        # Tool calling model didn't call any tool - fallback to asking user
                         if self.stream_callback:
                             self.stream_callback("model_response", "system", 
                                 "Note: Could not automatically search for domain. Please provide the domain name.")
@@ -807,9 +809,9 @@ Target: Find the official website domain for this company/organization."""
                                         self.stream_callback("model_response", "system", 
                                             f"Note: Web search failed: {error_msg}")
                 else:
-                    # FunctionGemma call failed
+                    # Tool calling model call failed
                     if self.stream_callback:
-                        error_msg = functiongemma_result.get("error", "Unknown error")
+                        error_msg = tool_calling_result.get("error", "Unknown error")
                         self.stream_callback("model_response", "system", 
                             f"Note: Automatic domain search failed: {error_msg}. Please provide the domain name.")
                 
@@ -914,7 +916,7 @@ Target: Find the official website domain for this company/organization."""
                                 self.stream_callback("model_response", "system", 
                                     "Note: Could not find a valid domain from search results. Please provide the domain name.")
             except Exception as e:
-                # FunctionGemma call failed, fall through to asking user
+                # Tool calling call failed, fall through to asking user
                 # Log error but continue with fallback
                 if self.stream_callback:
                     self.stream_callback("model_response", "system", 

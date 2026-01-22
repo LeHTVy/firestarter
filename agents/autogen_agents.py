@@ -6,7 +6,8 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from models.generic_ollama_agent import GenericOllamaAgent
-from models.functiongemma_agent import FunctionGemmaAgent
+# FunctionGemma removed - using tool calling registry instead
+from models.tool_calling_registry import get_tool_calling_registry
 from models.deepseek_agent import DeepSeekAgent
 from tools.registry import get_registry
 from tools.executor import get_executor
@@ -35,7 +36,9 @@ class AutoGenAgent:
                 prompt_template="qwen3_system.jinja2"
             )
         elif self.model_name == "functiongemma":
-            self.model_agent = FunctionGemmaAgent()
+            # FunctionGemma removed - use tool calling registry instead
+            tool_registry = get_tool_calling_registry()
+            self.model_agent = tool_registry.get_model("json_tool_calling")
         elif self.model_name == "deepseek_r1":
             self.model_agent = DeepSeekAgent()
         else:
@@ -77,7 +80,8 @@ class AutoGenAgent:
             prompt = task
         
         # Execute using model agent
-        if isinstance(self.model_agent, FunctionGemmaAgent):
+        # Check if model agent has call_with_tools method (tool calling agents)
+        if hasattr(self.model_agent, 'call_with_tools'):
             result = self.model_agent.call_with_tools(
                 user_prompt=prompt,
                 agent=self.name.lower().replace(' ', '_'),

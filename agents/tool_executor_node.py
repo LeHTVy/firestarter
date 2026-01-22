@@ -1,4 +1,4 @@
-"""Tool Execution Node - Handles tool execution with FunctionGemma and fallback."""
+"""Tool Execution Node - Handles tool execution with JSON tool calling and fallback."""
 
 from typing import Dict, Any, Optional, Callable
 from tools.executor import get_executor
@@ -8,10 +8,9 @@ from agents.feedback_learner import FeedbackLearner
 
 
 class ToolExecutorNode:
-    """Node for executing tools with FunctionGemma and fallback to direct execution."""
+    """Node for executing tools with JSON tool calling and fallback to direct execution."""
     
     def __init__(self, 
-                 functiongemma,
                  context_manager,
                  memory_manager,
                  results_storage,
@@ -20,14 +19,12 @@ class ToolExecutorNode:
         """Initialize tool executor node.
         
         Args:
-            functiongemma: FunctionGemma agent instance (for backward compatibility)
             context_manager: Context manager instance
             memory_manager: Memory manager instance
             results_storage: Results storage instance
             stream_callback: Optional streaming callback
-            tool_calling_model: Optional tool calling model name (default: functiongemma)
+            tool_calling_model: Optional tool calling model name (default: json_tool_calling)
         """
-        self.functiongemma = functiongemma
         self.context_manager = context_manager
         self.memory_manager = memory_manager
         self.results_storage = results_storage
@@ -40,19 +37,14 @@ class ToolExecutorNode:
         # Initialize tool calling registry
         from models.tool_calling_registry import get_tool_calling_registry
         self.tool_calling_registry = get_tool_calling_registry()
-        self.tool_calling_model_name = tool_calling_model or "functiongemma"
-        
-        # Initialize tool calling registry
-        from models.tool_calling_registry import get_tool_calling_registry
-        self.tool_calling_registry = get_tool_calling_registry()
-        self.tool_calling_model_name = tool_calling_model or "functiongemma"
+        self.tool_calling_model_name = tool_calling_model or "json_tool_calling"
     
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Execute tools from subtasks.
         
         Strategy:
-        1. Try FunctionGemma to call tools (preferred - semantic tool selection)
-        2. If FunctionGemma doesn't call tools, fallback to direct execution from registry
+        1. Try JSON tool calling model to call tools (preferred - semantic tool selection)
+        2. If tool calling model doesn't call tools, fallback to direct execution from registry
         
         Args:
             state: Graph state with subtasks
@@ -69,7 +61,7 @@ class ToolExecutorNode:
         
         if self.stream_callback:
             def model_cb(chunk: str):
-                self.stream_callback("model_response", "functiongemma", chunk)
+                self.stream_callback("model_response", self.tool_calling_model_name, chunk)
             model_callback = model_cb
             
             def tool_cb(tool_name: str, command_name: str, line: str):
@@ -113,9 +105,9 @@ class ToolExecutorNode:
                         for msg in recent
                     ])
                 
-                # Try FunctionGemma first (preferred - semantic tool selection)
+                # Try tool calling model first (preferred - semantic tool selection)
                 for tool_name in tools:
-                    # Build comprehensive prompt for FunctionGemma with context
+                    # Build comprehensive prompt for tool calling with context
                     tool_prompt = f"""Execute {tool_name} for the following task:
 Task: {subtask_name}
 Description: {subtask_description}
@@ -140,9 +132,9 @@ Original request: {user_prompt_original}"""
                         tool_stream_callback=tool_stream_callback
                     )
                     
-                    # Check if FunctionGemma actually called tools
+                    # Check if tool calling model actually called tools
                     if result.get("tool_results") and len(result["tool_results"]) > 0:
-                        # FunctionGemma successfully called tools
+                        # Tool calling model successfully called tools
                         for tr in result["tool_results"]:
                             exec_result = tr.get("result", {})
                             tool_results.append(exec_result)
@@ -171,10 +163,10 @@ Original request: {user_prompt_original}"""
                                 parameters=exec_result.get("parameters")
                             )
                     else:
-                        # FALLBACK: FunctionGemma didn't call tools, execute directly from registry
+                        # FALLBACK: Tool calling model didn't call tools, execute directly from registry
                         if self.stream_callback:
                             self.stream_callback("model_response", "system", 
-                                f"⚠️ FunctionGemma didn't call {tool_name}. Executing directly from registry...")
+                                f"⚠️ Tool calling model didn't call {tool_name}. Executing directly from registry...")
                         
                         # Prepare base parameters
                         base_params = {}

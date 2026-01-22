@@ -150,8 +150,47 @@ def main():
             # Silently handle streaming errors to not break main flow
             pass
     
-    # Model selection
+    # Model selection - Auto-detect available Ollama models
     try:
+        from utils.ollama_helper import get_model_names, check_model_exists
+        
+        console.print("\n[bold cyan]Model Selection[/bold cyan]")
+        
+        # Get available models from Ollama
+        available_models = get_model_names()
+        
+        if available_models:
+            console.print(f"[dim]Found {len(available_models)} model(s) in Ollama:[/dim]")
+            for i, model_name in enumerate(available_models[:10], 1):  # Show first 10
+                console.print(f"  {i}. {model_name}")
+            if len(available_models) > 10:
+                console.print(f"  ... and {len(available_models) - 10} more")
+            console.print("")
+        
+        # Predefined popular models
+        predefined_models = {
+            "1": ("mistral:latest", "Mistral 7B (default)"),
+            "2": ("llama3.1:8b", "Llama 3.1 8B (less refusal)"),
+            "3": ("deepseek-v2:7b", "DeepSeek-V2 7B (technical)"),
+            "4": ("qwen2_pentest:latest", "Qwen2 Pentest (fine-tuned, recommended for pentest)"),
+            "5": (None, "Custom Ollama model")
+        }
+        
+        # Show predefined options
+        for key, (model_name, display_name) in predefined_models.items():
+            if key == "5":
+                console.print(f"{key}. {display_name}")
+            else:
+                exists_marker = " ✅" if model_name and check_model_exists(model_name) else ""
+                console.print(f"{key}. {display_name}{exists_marker}")
+        
+        model_choice = safe_prompt_ask("\n[dim]Select analysis model (1-5, default: 1)[/dim]", default="1")
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+        sys.exit(0)
+    except Exception as e:
+        # Fallback if Ollama detection fails
+        console.print(f"[yellow]⚠️  Could not detect Ollama models: {e}[/yellow]")
         console.print("\n[bold cyan]Model Selection[/bold cyan]")
         console.print("1. Mistral 7B (default)")
         console.print("2. Llama 3.1 8B (less refusal)")
@@ -159,10 +198,11 @@ def main():
         console.print("4. Qwen2 Pentest (fine-tuned, recommended for pentest)")
         console.print("5. Custom Ollama model")
         
-        model_choice = safe_prompt_ask("\n[dim]Select analysis model (1-5, default: 1)[/dim]", default="1")
-    except KeyboardInterrupt:
-        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
-        sys.exit(0)
+        try:
+            model_choice = safe_prompt_ask("\n[dim]Select analysis model (1-5, default: 1)[/dim]", default="1")
+        except KeyboardInterrupt:
+            console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+            sys.exit(0)
     
     model_map = {
         "1": "mistral:latest",
@@ -176,6 +216,13 @@ def main():
     
     if model_choice == "5":
         try:
+            # Show available models if we have them
+            if available_models:
+                console.print("\n[dim]Available models:[/dim]")
+                for i, model_name in enumerate(available_models, 1):
+                    console.print(f"  {i}. {model_name}")
+                console.print("")
+            
             selected_model = safe_prompt_ask("[dim]Enter Ollama model name (e.g., llama3.1:8b)[/dim]")
         except KeyboardInterrupt:
             console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
@@ -184,6 +231,9 @@ def main():
     console.print(f"[green]✅ Using analysis model: {selected_model}[/green]")
     
     # Tool calling model selection
+    # Initialize default value first to avoid UnboundLocalError
+    tool_calling_model_name = "json_tool_calling"
+    
     try:
         from models.tool_calling_registry import get_tool_calling_registry
         tool_registry = get_tool_calling_registry()
@@ -191,8 +241,8 @@ def main():
         
         console.print("\n[bold cyan]Tool Calling Model Selection[/bold cyan]")
         for i, model_name in enumerate(available_tool_models, 1):
-            display_name = "FunctionGemma (Ollama format)" if model_name == "functiongemma" else "JSON Tool Calling (JSON string format)"
-            default_marker = " (default)" if model_name == "functiongemma" else ""
+            display_name = "JSON Tool Calling (JSON string format)"
+            default_marker = " (default)" if model_name == "json_tool_calling" else ""
             console.print(f"{i}. {display_name}{default_marker}")
         
         tool_model_choice = safe_prompt_ask(f"\n[dim]Select tool calling model (1-{len(available_tool_models)}, default: 1)[/dim]", default="1")
@@ -200,15 +250,17 @@ def main():
         if tool_model_choice.isdigit() and 1 <= int(tool_model_choice) <= len(available_tool_models):
             selected_tool_model = available_tool_models[int(tool_model_choice) - 1]
             tool_registry.set_default(selected_tool_model)
+            tool_calling_model_name = selected_tool_model
             console.print(f"[green]✅ Using tool calling model: {selected_tool_model}[/green]\n")
         else:
-            console.print(f"[green]✅ Using default tool calling model: functiongemma[/green]\n")
+            tool_calling_model_name = "json_tool_calling"
+            console.print(f"[green]✅ Using default tool calling model: json_tool_calling[/green]\n")
     except KeyboardInterrupt:
         console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
         sys.exit(0)
     except Exception as e:
         console.print(f"[yellow]⚠️  Tool calling model selection failed: {e}. Using default.[/yellow]\n")
-        tool_calling_model_name = "functiongemma"
+        tool_calling_model_name = "json_tool_calling"
     
     graph = PentestGraph(
         stream_callback=graph_stream_callback,

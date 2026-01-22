@@ -3,7 +3,6 @@
 from typing import Dict, Any, Optional, Protocol, List, Callable
 from pathlib import Path
 
-from models.functiongemma_agent import FunctionGemmaAgent
 from models.json_tool_calling_agent import JSONToolCallingAgent
 
 
@@ -37,20 +36,14 @@ class ToolCallingModelRegistry:
         """
         self.config_path = config_path
         self._models: Dict[str, ToolCallingAgent] = {}
-        self._default_model = "functiongemma"
+        self._default_model = "json_tool_calling"  # Changed default from functiongemma
         
         # Initialize default models
         self._initialize_default_models()
     
     def _initialize_default_models(self):
         """Initialize default tool calling models."""
-        # FunctionGemma (Ollama function calling format)
-        try:
-            self._models["functiongemma"] = FunctionGemmaAgent(config_path=self.config_path)
-        except Exception as e:
-            print(f"Warning: Failed to initialize FunctionGemma: {e}")
-        
-        # JSON Tool Calling (JSON string format)
+        # JSON Tool Calling (JSON string format) - Primary tool calling method
         try:
             # Default to mistral:latest, can be configured
             self._models["json_tool_calling"] = JSONToolCallingAgent(
