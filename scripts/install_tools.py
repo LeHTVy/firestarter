@@ -34,7 +34,8 @@ TOOL_PACKAGE_MAP = {
     "reverse_shell": "netcat-traditional",  # Explicitly select netcat variant
 }
 
-# Python packages (pip) - verified to exist on PyPI
+# Python packages (pip) - ONLY packages that exist on PyPI
+# Many security tools are not on PyPI, they need to be installed via git or manual setup
 PYTHON_PACKAGES = {
     "shodan_search": "shodan",
     "virustotal_scan": "virustotal-api",
@@ -47,9 +48,6 @@ PYTHON_PACKAGES = {
     "web_archive_search": "waybackpy",
     "technology_detection": "python-Wappalyzer",
     "waf_detection": "wafw00f",
-    "cms_detection": "CMSeeK",
-    "api_endpoint_discovery": "arjun",
-    "graphql_introspection": "graphqlmap",
     "jwt_analysis": "pyjwt",
     "oauth_test": "requests-oauthlib",
     "template_injection_test": "tplmap",
@@ -58,11 +56,9 @@ PYTHON_PACKAGES = {
     "xxe_blind_test": "lxml",
     "websocket_test": "websocket-client",
     "dns_rebinding": "dnspython",
-    "subdomain_takeover": "subjack",
     "secret_scanning": "truffleHog",
     "email_harvesting": "theHarvester",
     "social_media_recon": "sherlock-project",
-    "github_recon": "gitrob",
     "certificate_transparency": "ctfr",
     "breach_check": "h8mail",
     "password_leak_check": "haveibeenpwned",
@@ -71,6 +67,16 @@ PYTHON_PACKAGES = {
     "boolean_blind_sqli": "sqlmap",
     "union_based_sqli": "sqlmap",
     "error_based_sqli": "sqlmap",
+}
+
+# Packages that don't exist on PyPI (need git install or manual setup)
+# These are commented out to avoid installation errors
+PYTHON_PACKAGES_NOT_ON_PYPI = {
+    "cms_detection": "CMSeeK",  # Not on PyPI - needs git install
+    "api_endpoint_discovery": "arjun",  # Not on PyPI - needs git install
+    "graphql_introspection": "graphqlmap",  # Not on PyPI - needs git install
+    "subdomain_takeover": "subjack",  # Not on PyPI - needs git install
+    "github_recon": "gitrob",  # Not on PyPI - needs git install
 }
 
 # Git-based tools (need to clone and install manually)
@@ -296,24 +302,92 @@ def install_system_packages(packages: Set[str], dry_run: bool = False, skip_miss
         sys.exit(1)
 
 
-def install_python_packages(packages: Set[str], dry_run: bool = False):
-    """Install Python packages using pip."""
+def check_pypi_package_exists(package: str) -> bool:
+    """Check if a package exists on PyPI by trying to get its metadata."""
+    try:
+        # Try using pip show (fastest, works if package is installed)
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "show", package],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            return True
+        
+        # Try using pip install --dry-run (simulates install without actually installing)
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--dry-run", package],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        # If dry-run succeeds, package exists
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+        # If check fails, assume package exists and let pip handle the error
+        # This is safer than blocking valid packages
+        return True
+
+
+def install_python_packages(packages: Set[str], dry_run: bool = False, skip_missing: bool = True):
+    """Install Python packages using pip.
+    
+    Args:
+        packages: Set of package names
+        dry_run: If True, only show what would be installed
+        skip_missing: If True, skip packages that don't exist on PyPI
+    """
     if not packages:
         return
     
-    print(f"\n🐍 Installing {len(packages)} Python package(s)...")
+    print(f"\n🐍 Checking {len(packages)} Python package(s)...")
+    
+    # Filter packages that exist on PyPI
+    existing_packages = []
+    missing_packages = []
+    
     for package in sorted(packages):
+        if check_pypi_package_exists(package):
+            existing_packages.append(package)
+            print(f"  ✅ {package} (available on PyPI)")
+        else:
+            missing_packages.append(package)
+            if skip_missing:
+                print(f"  ⚠️  {package} (not found on PyPI - skipping)")
+            else:
+                print(f"  ❌ {package} (not found on PyPI)")
+    
+    if missing_packages and not skip_missing:
+        print(f"\n❌ {len(missing_packages)} package(s) not found on PyPI")
+        print("💡 Tip: Use --skip-missing to install only available packages")
+        sys.exit(1)
+    
+    if not existing_packages:
+        print("⚠️  No packages available on PyPI")
+        return
+    
+    print(f"\n🐍 Installing {len(existing_packages)} available package(s)...")
+    for package in existing_packages:
         print(f"  - {package}")
     
     if dry_run:
-        print("\n[DRY RUN] Would run: pip install " + " ".join(sorted(packages)))
+        print("\n[DRY RUN] Would run: pip install " + " ".join(existing_packages))
         return
     
     try:
-        subprocess.run([sys.executable, "-m", "pip", "install"] + sorted(packages), check=True)
-        print("✅ Python packages installed successfully")
+        print(f"📥 Installing packages...")
+        subprocess.run([sys.executable, "-m", "pip", "install"] + existing_packages, check=True)
+        print(f"✅ Successfully installed {len(existing_packages)} package(s)")
+        if missing_packages:
+            print(f"⚠️  Skipped {len(missing_packages)} package(s) not found on PyPI (may need git install)")
+            print("💡 Tip: Some tools may need to be installed from GitHub:")
+            for pkg in missing_packages[:5]:  # Show first 5
+                print(f"     - {pkg}: May need 'pip install git+https://github.com/...'")
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed to install Python packages: {e}")
+        if missing_packages:
+            print(f"💡 Note: {len(missing_packages)} package(s) were skipped (not on PyPI)")
         sys.exit(1)
 
 
@@ -346,7 +420,7 @@ def main():
         install_system_packages(system_packages, dry_run=args.dry_run, skip_missing=args.skip_missing)
     
     if not args.system_only:
-        install_python_packages(python_packages, dry_run=args.dry_run)
+        install_python_packages(python_packages, dry_run=args.dry_run, skip_missing=args.skip_missing)
     
     print("\n✅ Installation complete!")
 
