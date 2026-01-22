@@ -80,10 +80,8 @@ class ToolResultsStorage:
         summary = None
         summary_metadata = None
         
-        # Create document text
-        doc_text = f"Tool: {tool_name}\nParameters: {json.dumps(parameters)}\nResults: {result_text[:10000]}"  # Limit to 10KB
-        else:
-            doc_text = f"Tool: {tool_name}\nParameters: {json.dumps(parameters)}\nResults: {result_text}"
+        # Create document text (limit to 10KB to prevent context explosion)
+        doc_text = f"Tool: {tool_name}\nParameters: {json.dumps(parameters)}\nResults: {result_text[:10000]}"
         
         # Create metadata
         metadata = {
