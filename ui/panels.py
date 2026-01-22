@@ -1,6 +1,6 @@
 """Rich panel components for streaming display."""
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.live import Live
