@@ -58,8 +58,8 @@ class RecommendToolsNode:
         tool_subtasks = []
         policy_issues = []
         
-        from tools.registry import get_tool_registry
-        tool_registry = get_tool_registry()
+        from tools.registry import get_registry
+        tool_registry = get_registry()
         
         for subtask in subtasks:
             if subtask.get("type") == "tool_execution":

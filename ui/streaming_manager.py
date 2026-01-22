@@ -223,8 +223,10 @@ class StreamingManager:
         Args:
             step: Current step name
         """
-        self.progress_panel.update_step(step)
-        self._update_display()
+        # Only update if step actually changed to avoid excessive rendering
+        if self.progress_panel.current_step != step:
+            self.progress_panel.update_step(step)
+            self._update_display()
     
     def complete_progress_step(self, step: str):
         """Mark progress step as complete.

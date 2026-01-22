@@ -265,6 +265,12 @@ class PgVectorStore:
             warnings.warn(f"Invalid embedding format: expected list/array, got {type(query_embedding)}. Query was: '{query[:50]}...'")
             return []
         
+        # Additional check: if query looks like a conversation_id or collection name, skip embedding
+        if isinstance(query, str) and (query.startswith("conversation_") or query.startswith("session_")):
+            import warnings
+            warnings.warn(f"Query appears to be a conversation/session ID, not a text query: '{query}'. Skipping similarity search.")
+            return []
+        
         # Validate all elements are numbers
         try:
             # Try to convert to float to ensure they're numeric

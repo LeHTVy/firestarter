@@ -96,10 +96,10 @@ class ToolExecutorNode:
     def _validate_subtasks(self, subtasks: List[Dict], target: Optional[str],
                           conversation_id: Optional[str], execution_mode) -> List[Dict]:
         """Validate subtasks against policy."""
-        from tools.registry import get_tool_registry
+        from tools.registry import get_registry
         from agents.policy_engine import PolicyDecision
         
-        tool_registry = get_tool_registry()
+        tool_registry = get_registry()
         validated = []
         
         for subtask in subtasks:
