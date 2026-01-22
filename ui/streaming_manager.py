@@ -61,13 +61,15 @@ class StreamingManager:
     def create_tool_panel(self, 
                          tool_name: str, 
                          command_name: Optional[str] = None,
-                         target: Optional[str] = None) -> str:
+                         target: Optional[str] = None,
+                         parameters: Optional[Dict[str, Any]] = None) -> str:
         """Create a tool execution panel.
         
         Args:
             tool_name: Tool name
             command_name: Optional command name
             target: Optional target
+            parameters: Optional parameters used for tool execution
             
         Returns:
             Panel ID
@@ -76,10 +78,22 @@ class StreamingManager:
         self.tool_panels[panel_id] = ToolExecutionPanel(
             tool_name=tool_name,
             command_name=command_name,
-            target=target
+            target=target,
+            parameters=parameters
         )
         self._update_display()
         return panel_id
+    
+    def set_tool_result(self, panel_id: str, result: Dict[str, Any]):
+        """Set final result for a tool panel.
+        
+        Args:
+            panel_id: Panel ID
+            result: Tool execution result dict
+        """
+        if panel_id in self.tool_panels:
+            self.tool_panels[panel_id].set_result(result)
+            self._update_display()
     
     def update_tool_output(self, panel_id: str, line: str):
         """Update tool output with a new line.

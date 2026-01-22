@@ -230,20 +230,39 @@ class PgVectorStore:
         Returns:
             List of similar documents with metadata and distance scores
         """
-        # Generate query embedding
-        query_embedding = self.embeddings.embed_query(query)
+        # Generate query embedding with robust error handling
+        query_embedding = None
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+        except Exception as e:
+            import warnings
+            warnings.warn(f"Embedding generation failed: {str(e)}")
         
-        # Validate query embedding
-        if not query_embedding or len(query_embedding) == 0:
+        # Validate query embedding - must be a list/array of numbers
+        if not query_embedding:
             # Try fallback using LangChain
             try:
                 from models.llm_client import OllamaEmbeddingClient
                 fallback_client = OllamaEmbeddingClient(model_name="nomic-embed-text")
                 query_embedding = fallback_client.embed_query(query)
-            except Exception:
+            except Exception as fallback_error:
+                import warnings
+                warnings.warn(f"Fallback embedding generation failed: {str(fallback_error)}")
                 return []
         
-        if not query_embedding or len(query_embedding) == 0:
+        # Additional validation: ensure it's a list/array and not a string
+        if not isinstance(query_embedding, (list, tuple)) or len(query_embedding) == 0:
+            import warnings
+            warnings.warn(f"Invalid embedding format: expected list/array, got {type(query_embedding)}")
+            return []
+        
+        # Validate all elements are numbers
+        try:
+            # Try to convert to float to ensure they're numeric
+            _ = [float(x) for x in query_embedding]
+        except (ValueError, TypeError):
+            import warnings
+            warnings.warn(f"Embedding contains non-numeric values")
             return []
         
         # Build query with filters
@@ -252,6 +271,7 @@ class PgVectorStore:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # Convert embedding to PostgreSQL vector format
+            # Ensure all values are numeric before conversion
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
             
             # Build WHERE clause for filters

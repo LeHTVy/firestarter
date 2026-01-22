@@ -13,20 +13,23 @@ from rich.layout import Layout
 class ToolExecutionPanel:
     """Panel for displaying tool execution with live output."""
     
-    def __init__(self, tool_name: str, command_name: Optional[str] = None, target: Optional[str] = None):
+    def __init__(self, tool_name: str, command_name: Optional[str] = None, target: Optional[str] = None, parameters: Optional[Dict[str, Any]] = None):
         """Initialize tool execution panel.
         
         Args:
             tool_name: Name of the tool
             command_name: Optional command name
             target: Optional target being scanned
+            parameters: Optional parameters used for tool execution
         """
         self.tool_name = tool_name
         self.command_name = command_name
         self.target = target
+        self.parameters = parameters or {}
         self.output_lines: List[str] = []
         self.status = "Initializing..."
         self.max_lines = 50  # Limit output lines to prevent overflow
+        self.result: Optional[Dict[str, Any]] = None  # Store final result
         
     def update_status(self, status: str):
         """Update status message."""
@@ -38,6 +41,18 @@ class ToolExecutionPanel:
         # Keep only last N lines
         if len(self.output_lines) > self.max_lines:
             self.output_lines = self.output_lines[-self.max_lines:]
+    
+    def set_result(self, result: Dict[str, Any]):
+        """Set final execution result.
+        
+        Args:
+            result: Tool execution result dict
+        """
+        self.result = result
+        if result.get("success"):
+            self.status = "Completed"
+        else:
+            self.status = f"Failed: {result.get('error', 'Unknown error')}"
     
     def render(self) -> Panel:
         """Render panel."""
@@ -53,8 +68,26 @@ class ToolExecutionPanel:
             content_lines.append(f"[bold]Target:[/bold] {self.target}")
             content_lines.append("")
         
+        # Show parameters if available
+        if self.parameters:
+            params_str = ", ".join([f"{k}={v}" for k, v in self.parameters.items()])
+            if len(params_str) > 80:
+                params_str = params_str[:77] + "..."
+            content_lines.append(f"[bold]Parameters:[/bold] {params_str}")
+            content_lines.append("")
+        
         content_lines.append(f"[bold]Status:[/bold] {self.status}")
         content_lines.append("")
+        
+        # Show result summary if available
+        if self.result:
+            if self.result.get("success"):
+                content_lines.append("[bold green]✓ Execution successful[/bold green]")
+            else:
+                error = self.result.get("error", "Unknown error")
+                content_lines.append(f"[bold red]✗ Execution failed: {error}[/bold red]")
+            content_lines.append("")
+        
         content_lines.append("[bold]Output:[/bold]")
         
         # Add output lines

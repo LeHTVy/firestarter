@@ -15,15 +15,17 @@ class ToolExecutorNode:
                  context_manager,
                  memory_manager,
                  results_storage,
-                 stream_callback: Optional[Callable[[str, str, Any], None]] = None):
+                 stream_callback: Optional[Callable[[str, str, Any], None]] = None,
+                 tool_calling_model: Optional[str] = None):
         """Initialize tool executor node.
         
         Args:
-            functiongemma: FunctionGemma agent instance
+            functiongemma: FunctionGemma agent instance (for backward compatibility)
             context_manager: Context manager instance
             memory_manager: Memory manager instance
             results_storage: Results storage instance
             stream_callback: Optional streaming callback
+            tool_calling_model: Optional tool calling model name (default: functiongemma)
         """
         self.functiongemma = functiongemma
         self.context_manager = context_manager
@@ -34,6 +36,16 @@ class ToolExecutorNode:
         self.feedback_tracker = ToolFeedbackTracker()  # Track tool execution feedback
         self.result_analyzer = ResultAnalyzer()  # Analyze results and suggest next tools
         self.feedback_learner = FeedbackLearner(feedback_tracker=self.feedback_tracker)  # Learn from feedback
+        
+        # Initialize tool calling registry
+        from models.tool_calling_registry import get_tool_calling_registry
+        self.tool_calling_registry = get_tool_calling_registry()
+        self.tool_calling_model_name = tool_calling_model or "functiongemma"
+        
+        # Initialize tool calling registry
+        from models.tool_calling_registry import get_tool_calling_registry
+        self.tool_calling_registry = get_tool_calling_registry()
+        self.tool_calling_model_name = tool_calling_model or "functiongemma"
     
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Execute tools from subtasks.
@@ -115,8 +127,12 @@ Original request: {user_prompt_original}"""
                     
                     tool_prompt += "\n\nExtract the required parameters from the context above and execute the tool with appropriate values. For example, if the target is a domain like \"hellogroup.co.za\", use it as the \"domain\" parameter."
                     
-                    result = self.functiongemma.call_with_tools(
+                    # Get tool calling model from registry
+                    tool_calling_agent = self.tool_calling_registry.get_model(self.tool_calling_model_name)
+                    
+                    result = tool_calling_agent.call_with_tools(
                         user_prompt=tool_prompt,
+                        tools=tools,  # Pass specific tools
                         agent=state.get("selected_agent"),
                         session_id=state.get("conversation_id") or state.get("session_id"),
                         conversation_history=state.get("conversation_history", []),

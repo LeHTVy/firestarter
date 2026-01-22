@@ -159,7 +159,7 @@ def main():
         console.print("4. Qwen2 Pentest (fine-tuned, recommended for pentest)")
         console.print("5. Custom Ollama model")
         
-        model_choice = safe_prompt_ask("\n[dim]Select model (1-5, default: 1)[/dim]", default="1")
+        model_choice = safe_prompt_ask("\n[dim]Select analysis model (1-5, default: 1)[/dim]", default="1")
     except KeyboardInterrupt:
         console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
         sys.exit(0)
@@ -181,11 +181,39 @@ def main():
             console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
             sys.exit(0)
     
-    console.print(f"[green]✅ Using model: {selected_model}[/green]\n")
+    console.print(f"[green]✅ Using analysis model: {selected_model}[/green]")
+    
+    # Tool calling model selection
+    try:
+        from models.tool_calling_registry import get_tool_calling_registry
+        tool_registry = get_tool_calling_registry()
+        available_tool_models = tool_registry.list_models()
+        
+        console.print("\n[bold cyan]Tool Calling Model Selection[/bold cyan]")
+        for i, model_name in enumerate(available_tool_models, 1):
+            display_name = "FunctionGemma (Ollama format)" if model_name == "functiongemma" else "JSON Tool Calling (JSON string format)"
+            default_marker = " (default)" if model_name == "functiongemma" else ""
+            console.print(f"{i}. {display_name}{default_marker}")
+        
+        tool_model_choice = safe_prompt_ask(f"\n[dim]Select tool calling model (1-{len(available_tool_models)}, default: 1)[/dim]", default="1")
+        
+        if tool_model_choice.isdigit() and 1 <= int(tool_model_choice) <= len(available_tool_models):
+            selected_tool_model = available_tool_models[int(tool_model_choice) - 1]
+            tool_registry.set_default(selected_tool_model)
+            console.print(f"[green]✅ Using tool calling model: {selected_tool_model}[/green]\n")
+        else:
+            console.print(f"[green]✅ Using default tool calling model: functiongemma[/green]\n")
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+        sys.exit(0)
+    except Exception as e:
+        console.print(f"[yellow]⚠️  Tool calling model selection failed: {e}. Using default.[/yellow]\n")
+        tool_calling_model_name = "functiongemma"
     
     graph = PentestGraph(
         stream_callback=graph_stream_callback,
-        analysis_model=selected_model
+        analysis_model=selected_model,
+        tool_calling_model=tool_calling_model_name
     )
     
     # Conversation management
@@ -473,8 +501,13 @@ def main():
                         result["answer"] = synthesize_result.get("final_answer", "Tools were skipped as requested.")
                         result["tool_results"] = []
                 
-                # Get answer
-                answer = result.get("answer", "No answer generated.")
+                # Get answer with robust None handling
+                answer = result.get("answer") or result.get("final_answer") or "No answer generated."
+                # Ensure answer is always a string, never None
+                if answer is None:
+                    answer = "No answer was generated. Please try again."
+                if not isinstance(answer, str):
+                    answer = str(answer)
                 
                 # Add to persistent conversation buffer (production)
                 if current_conversation_id:
@@ -532,8 +565,11 @@ def main():
                 # Stop streaming display
                 streaming_manager.stop()
                 
-                # Display final answer
+                # Display final answer - ensure answer is valid before rendering
                 console.print()  # New line
+                # Final safety check: ensure answer is a non-empty string
+                if not answer or not isinstance(answer, str):
+                    answer = "No answer was generated. Please try again."
                 console.print(Panel(
                     answer,
                     title="[bold blue]Final Answer[/bold blue]",

@@ -11,7 +11,6 @@ class AnswerSynthesizer:
     def __init__(self):
         """Initialize synthesizer."""
         self.deepseek = DeepSeekAgent()
-        # Use Mistral for synthesis (replacing Qwen3)
         self.qwen3 = GenericOllamaAgent(
             model_name="mistral:latest",
             prompt_template="qwen3_system.jinja2"

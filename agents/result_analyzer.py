@@ -2,14 +2,23 @@
 
 from typing import Dict, Any, List, Optional
 import re
+import json
+from models.generic_ollama_agent import GenericOllamaAgent
 
 
 class ResultAnalyzer:
     """Analyzes tool execution results to extract findings and suggest next tools."""
     
-    def __init__(self):
-        """Initialize result analyzer."""
-        pass
+    def __init__(self, model_name: str = "mistral:latest"):
+        """Initialize result analyzer.
+        
+        Args:
+            model_name: Model to use for intelligent analysis
+        """
+        self.analysis_model = GenericOllamaAgent(
+            model_name=model_name,
+            prompt_template="qwen3_system.jinja2"
+        )
     
     def analyze_results(self, tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze tool execution results to extract findings.
@@ -90,11 +99,109 @@ class ResultAnalyzer:
         # Suggest next tools based on findings
         suggested_tools = self._suggest_next_tools(findings)
         
+        # Use AI model for intelligent analysis if available
+        ai_analysis = self._analyze_with_ai(tool_results, findings)
+        
         return {
             "findings": findings,
             "suggested_tools": suggested_tools,
-            "summary": self._generate_summary(findings)
+            "summary": self._generate_summary(findings),
+            "ai_insights": ai_analysis.get("insights", ""),
+            "ai_recommendations": ai_analysis.get("recommendations", [])
         }
+    
+    def _analyze_with_ai(self, tool_results: List[Dict[str, Any]], findings: Dict[str, Any]) -> Dict[str, Any]:
+        """Use AI model to analyze tool results and provide insights.
+        
+        Args:
+            tool_results: List of tool execution results
+            findings: Extracted findings
+            
+        Returns:
+            Dict with insights and recommendations
+        """
+        try:
+            # Format tool results for analysis
+            results_summary = []
+            for result in tool_results[:5]:  # Limit to 5 results
+                tool_name = result.get("tool_name", "unknown")
+                success = result.get("success", False)
+                results_data = result.get("results", {})
+                
+                summary = f"Tool: {tool_name}, Success: {success}"
+                if isinstance(results_data, dict):
+                    # Extract key information
+                    key_info = []
+                    for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "services"]:
+                        if key in results_data:
+                            key_info.append(f"{key}: {results_data[key]}")
+                    if key_info:
+                        summary += f", Key findings: {', '.join(key_info)}"
+                
+                results_summary.append(summary)
+            
+            analysis_prompt = f"""Analyze the following security tool execution results and provide insights and recommendations.
+
+Tool Results:
+{chr(10).join(results_summary)}
+
+Extracted Findings:
+- Subdomains: {len(findings.get('subdomains', []))}
+- IPs: {len(findings.get('ips', []))}
+- Open Ports: {len(findings.get('open_ports', []))}
+- Vulnerabilities: {len(findings.get('vulnerabilities', []))}
+- Technologies: {len(findings.get('technologies', []))}
+- Services: {len(findings.get('services', []))}
+
+Provide:
+1. Key insights from the results
+2. Security recommendations
+3. Suggested next steps
+
+Format your response clearly with insights and recommendations."""
+            
+            result = self.analysis_model.analyze_and_breakdown(
+                user_prompt=analysis_prompt,
+                conversation_history=None
+            )
+            
+            if result.get("success"):
+                response = result.get("raw_response", "")
+                return {
+                    "insights": response,
+                    "recommendations": self._extract_recommendations(response)
+                }
+        except Exception as e:
+            # Fallback to basic analysis
+            pass
+        
+        return {
+            "insights": "",
+            "recommendations": []
+        }
+    
+    def _extract_recommendations(self, response: str) -> List[str]:
+        """Extract actionable recommendations from AI response.
+        
+        Args:
+            response: AI analysis response
+            
+        Returns:
+            List of recommendation strings
+        """
+        recommendations = []
+        
+        # Look for numbered or bulleted recommendations
+        lines = response.split('\n')
+        for line in lines:
+            line = line.strip()
+            # Match patterns like "1. ...", "- ...", "* ...", "• ..."
+            if re.match(r'^[\d\-\*•]\s+', line):
+                recommendations.append(line)
+            elif line.startswith("Recommendation:") or line.startswith("Next step:"):
+                recommendations.append(line)
+        
+        return recommendations[:5]  # Limit to 5 recommendations
     
     def _parse_raw_output(self, raw_output: str, findings: Dict[str, Any]) -> None:
         """Parse raw output text for common patterns.
