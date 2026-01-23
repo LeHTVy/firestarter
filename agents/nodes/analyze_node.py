@@ -224,6 +224,38 @@ class AnalyzeNode:
                             self.stream_callback("model_response", "system", 
                                 f"✅ Created {len(subtasks)} default subtask(s) for {task_type} on {target}")
                 
+                # PROACTIVE FALLBACK: If still no subtasks and prompt looks like pentest request
+                if len(subtasks) == 0:
+                    prompt_lower = user_prompt.lower()
+                    security_keywords = ["assess", "scan", "pentest", "recon", "enumerate", 
+                                       "find", "vuln", "test", "hack", "attack", "exploit",
+                                       "osint", "gather", "information"]
+                    is_security_request = any(kw in prompt_lower for kw in security_keywords)
+                    
+                    if is_security_request:
+                        # Extract target
+                        target = None
+                        if session_context:
+                            target = session_context.get_target()
+                        if not target:
+                            from utils.input_normalizer import InputNormalizer
+                            normalizer = InputNormalizer()
+                            normalized = normalizer.normalize_input(user_prompt, verify_domains=False)
+                            targets = normalized.get("targets", [])
+                            if targets:
+                                target = targets[0]
+                        
+                        if target:
+                            if self.stream_callback:
+                                self.stream_callback("model_response", "system", 
+                                    f"⚠️ No subtasks from model. Creating proactive plan for: {target}")
+                            # Use create_proactive_plan for full pentest flow
+                            self.subtask_creator.create_proactive_plan(state, user_prompt, session_context)
+                            subtasks = state.get("subtasks", [])
+                            if self.stream_callback and subtasks:
+                                self.stream_callback("model_response", "system", 
+                                    f"✅ Created proactive plan with {len(subtasks)} subtask(s)")
+                
                 state["subtasks"] = subtasks
                 
                 # Track open tasks in session memory

@@ -289,7 +289,7 @@ def main():
             autonomy_controller.set_level(AutonomyLevel.COPILOT)
         
         # Set confirmation callback for gated actions
-        def confirm_action(message: str, context: Dict) -> str:
+        def confirm_action(message: str, context) -> str:
             return safe_prompt_ask(f"[bold yellow]⚠️ {message}[/bold yellow] [dim](yes/no)[/dim]", default="no")
         
         autonomy_controller.confirm_callback = confirm_action
