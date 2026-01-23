@@ -200,3 +200,90 @@ class GenericOllamaAgent:
                 "error": str(e),
                 "refused": False
             }
+    
+    def synthesize_answer(self,
+                         user_question: str,
+                         search_results: Optional[Dict[str, Any]] = None,
+                         stream_callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+        """Synthesize final answer from tool results and search results.
+        
+        Args:
+            user_question: Original user question
+            search_results: Dict containing tool_results, search_results, etc.
+            stream_callback: Optional callback for streaming response chunks
+            
+        Returns:
+            Dict with 'answer' key containing synthesized answer
+        """
+        # Build context from results
+        context_parts = []
+        
+        if search_results:
+            # Tool results
+            tool_results = search_results.get("tool_results", [])
+            if tool_results:
+                context_parts.append("## Tool Execution Results:\n")
+                for result in tool_results:
+                    tool_name = result.get("tool_name", "unknown")
+                    success = result.get("success", False)
+                    output = result.get("results") or result.get("raw_output") or result.get("error", "")
+                    context_parts.append(f"### {tool_name} ({'Success' if success else 'Failed'}):\n{output}\n")
+            
+            # Web search results
+            web_results = search_results.get("search_results")
+            if web_results and web_results.get("results"):
+                context_parts.append("\n## Web Search Results:\n")
+                for r in web_results.get("results", [])[:5]:
+                    context_parts.append(f"- {r.get('title', '')}: {r.get('snippet', '')}\n")
+            
+            # Direct answer if available
+            direct = search_results.get("direct_answer")
+            if direct:
+                context_parts.append(f"\n## Previous Analysis:\n{direct}\n")
+        
+        context = "\n".join(context_parts) if context_parts else "No results available."
+        
+        # Build synthesis prompt
+        synthesis_prompt = f"""Based on the following results, provide a comprehensive answer to the user's question.
+
+User Question: {user_question}
+
+{context}
+
+Provide a clear, structured summary of the findings. Include:
+1. Key findings
+2. Potential vulnerabilities or points of interest
+3. Recommendations for next steps
+
+Be concise but thorough. Use markdown formatting."""
+
+        messages = [
+            {"role": "system", "content": "You are a security analyst synthesizing reconnaissance and security assessment results. Provide clear, actionable insights."},
+            {"role": "user", "content": synthesis_prompt}
+        ]
+        
+        try:
+            response = self.llm_client.generate(
+                messages=messages,
+                stream=stream_callback is not None,
+                stream_callback=stream_callback,
+                temperature=0.7,
+                num_predict=2048
+            )
+            
+            if response.get('success'):
+                return {
+                    "success": True,
+                    "answer": response.get('content', '')
+                }
+            else:
+                return {
+                    "success": False,
+                    "answer": f"Error: {response.get('error', 'Unknown error')}"
+                }
+        except Exception as e:
+            return {
+                "success": False,
+                "answer": f"Synthesis failed: {str(e)}"
+            }
+

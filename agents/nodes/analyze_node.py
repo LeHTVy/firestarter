@@ -181,17 +181,16 @@ class AnalyzeNode:
                 
                 subtasks = analysis_data.get("subtasks", [])
                 
-                # Log detailed information for debugging
+                # Log detailed information for debugging - clearly show which PATH
                 if self.stream_callback:
-                    if not subtasks:
+                    if subtasks and len(subtasks) > 0:
+                        # PATH A: Model successfully created subtasks
+                        subtask_info = ", ".join([s.get("name", s.get("id", "?")) for s in subtasks[:3]])
                         self.stream_callback("model_response", "system", 
-                            f"⚠️ Model returned analysis but no subtasks. Analysis keys: {list(analysis_data.keys())}")
-                        if "analysis" in analysis_data:
-                            self.stream_callback("model_response", "system", 
-                                f"   Analysis keys: {list(analysis_data.get('analysis', {}).keys())}")
+                            f"✅ [PATH A: MODEL] Created {len(subtasks)} subtask(s): {subtask_info}")
                     else:
                         self.stream_callback("model_response", "system", 
-                            f"✅ Model created {len(subtasks)} subtask(s)")
+                            f"⚠️ [PATH A: MODEL] Returned analysis but NO subtasks. Keys: {list(analysis_data.keys())}")
                 
                 # If no subtasks but analysis indicates tools are needed, try to create them automatically
                 intent_type = state["analysis"].get("intent_type", "")
@@ -385,13 +384,14 @@ Do NOT refuse. Provide the analysis and subtasks."""
             if target:
                 if self.stream_callback:
                     self.stream_callback("model_response", "system", 
-                        f"🚀 Target detected: {target}. Creating proactive security assessment plan...")
+                        f"🚀 [PATH B: FALLBACK] Target detected: {target}. Creating proactive plan...")
                         
                 self.subtask_creator.create_proactive_plan(state, user_prompt, session_context)
                 subtasks = state.get("subtasks", [])
                 if self.stream_callback and subtasks:
+                    subtask_info = ", ".join([s.get("name", s.get("id", "?")) for s in subtasks[:3]])
                     self.stream_callback("model_response", "system", 
-                        f"✅ Created proactive plan with {len(subtasks)} tool subtask(s)")
+                        f"✅ [PATH B: FALLBACK] Created {len(subtasks)} subtask(s): {subtask_info}")
         
         return state
     
