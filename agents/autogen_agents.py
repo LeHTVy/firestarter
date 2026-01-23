@@ -48,7 +48,7 @@ class AutoGenAgent:
             # Use GenericOllamaAgent for any Ollama model (flexible)
             self.model_agent = GenericOllamaAgent(
                 model_name=resolved_model,
-                prompt_template="roles/planner.jinja2"
+                prompt_template="autogen_recon.jinja2"
             )
         
         # Load prompt template
