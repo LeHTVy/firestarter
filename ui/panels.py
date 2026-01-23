@@ -119,8 +119,8 @@ class ModelResponsePanel:
         self.model_name = model_name
         self.response_text = ""
         self.status = "Thinking..."
-        self.expanded = True  # Default to expanded
-        self.max_collapsed_lines = 20  # Show first 20 lines when collapsed
+        self.expanded = True 
+        self.max_collapsed_lines = 40 
     
     def update_status(self, status: str):
         """Update status message."""
@@ -143,23 +143,16 @@ class ModelResponsePanel:
         content_lines.append("")
         
         if self.response_text:
-            # Show full response - no line limit, let Rich handle scrolling
-            # Wrap long lines for better display
             lines = self.response_text.split('\n')
             
-            # When expanded, show all lines; when collapsed, show first N lines
             if self.expanded:
                 display_lines = lines
             else:
                 display_lines = lines[:self.max_collapsed_lines]
             
-            # Process each line with word wrapping
             for line in display_lines:
-                # Wrap very long lines (over 120 chars) for better readability
-                # Use terminal width if available, otherwise default to 120
                 max_width = 120
                 if len(line) > max_width:
-                    # Word wrap: break long lines intelligently
                     words = line.split(' ')
                     current_line = ""
                     for word in words:
@@ -174,19 +167,15 @@ class ModelResponsePanel:
                 else:
                     content_lines.append(line)
             
-            # Add expand/collapse indicator
+            # Add expand/collapse indicator with terminal height info
             total_lines = len(lines)
             if not self.expanded and total_lines > self.max_collapsed_lines:
                 content_lines.append("")
                 content_lines.append(f"[dim yellow]💡 Press 'e' to expand or 't' to toggle (showing {self.max_collapsed_lines}/{total_lines} lines)[/dim yellow]")
+                content_lines.append(f"[dim]⚠️ If text is cut off, try maximizing your terminal window[/dim]")
             elif self.expanded and total_lines > self.max_collapsed_lines:
                 content_lines.append("")
-                content_lines.append(f"[dim yellow]💡 Press 'c' to collapse or 't' to toggle (showing all {total_lines} lines)[/dim yellow]")
-            
-            # Add indicator if response is very long
-            if total_lines > 100:
-                content_lines.append("")
-                content_lines.append(f"[dim](Total: {total_lines} lines, {len(self.response_text)} characters)[/dim]")
+                content_lines.append(f"[dim green]✓ Showing all {total_lines} lines - press 'c' to collapse[/dim green]")
         else:
             content_lines.append("[dim]Waiting for response...[/dim]")
         
@@ -199,14 +188,12 @@ class ModelResponsePanel:
             if total_lines > self.max_collapsed_lines:
                 title += f" [dim]({'Expanded' if self.expanded else 'Collapsed'})[/dim]"
         
-        # Use expand=True to allow panel to use full available space
-        # Rich will handle scrolling automatically if content exceeds terminal height
         return Panel(
             content,
             title=title,
             border_style="blue",
-            expand=True,  # Always expand to use available space
-            height=None  # No height limit - let Rich handle scrolling
+            expand=True, 
+            height=None 
         )
 
 

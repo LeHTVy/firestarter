@@ -484,11 +484,22 @@ class ToolExecutor:
                 
                 # If result has raw_output, stream it
                 if stream_callback and isinstance(result, dict):
+                    stream_callback("─" * 40)  # Visual separator
                     if result.get("raw_output"):
                         output_lines = str(result["raw_output"]).split("\n")
-                        for line in output_lines[:50]:  # Stream first 50 lines
+                        for line in output_lines:
                             if line.strip():
                                 stream_callback(line.strip())
+                        if len(output_lines) > 0:
+                            stream_callback(f"[Total: {len(output_lines)} lines]")
+                    elif result.get("results"):
+                        import json
+                        try:
+                            results_str = json.dumps(result["results"], indent=2, default=str)
+                            for line in results_str.split("\n")[:100]:
+                                stream_callback(line)
+                        except:
+                            stream_callback(str(result["results"])[:500])
                     elif result.get("success"):
                         stream_callback("Tool execution completed successfully")
             
