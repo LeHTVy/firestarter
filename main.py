@@ -42,6 +42,12 @@ def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
     Raises:
         KeyboardInterrupt: Re-raised to allow graceful exit handling
     """
+    # Strip Rich markup for plain text fallback
+    import re
+    plain_prompt = re.sub(r'\[.*?\]', '', prompt_text).strip()
+    if not plain_prompt:
+        plain_prompt = "You"
+    
     try:
         return Prompt.ask(prompt_text, default=default)
     except KeyboardInterrupt:
@@ -53,23 +59,23 @@ def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
         except:
             pass
         
-        # Use standard input as fallback
+        # Use standard input as fallback with clean prompt
         try:
             if default:
-                result = input(f"{prompt_text} (default: {default}): ").strip()
+                result = input(f"{plain_prompt} (default: {default}): ").strip()
                 return result if result else default
             else:
-                return input(f"{prompt_text}: ").strip()
+                return input(f"{plain_prompt}: ").strip()
         except KeyboardInterrupt:
             raise
     except Exception as e:
-        # Last resort fallback - use standard input
+        # Last resort fallback - use standard input with clean prompt
         try:
             if default:
-                result = input(f"{prompt_text} (default: {default}): ").strip()
+                result = input(f"{plain_prompt} (default: {default}): ").strip()
                 return result if result else default
             else:
-                return input(f"{prompt_text}: ").strip()
+                return input(f"{plain_prompt}: ").strip()
         except KeyboardInterrupt:
             raise
         except Exception:
