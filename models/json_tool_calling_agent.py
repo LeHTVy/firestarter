@@ -1,4 +1,11 @@
-"""JSON Tool Calling Agent - Parse JSON string tool calls from model responses."""
+"""JSON Tool Calling Agent - Parse JSON string tool calls from model responses.
+
+Enhanced with:
+- Strong SNODE identity for reduced model refusal
+- Phase-aware context for better tool selection
+- Robust JSON parsing with multiple fallback patterns
+- Few-shot examples for improved output format
+"""
 
 import json
 import re
@@ -11,6 +18,20 @@ from tools.registry import get_registry
 from tools.executor import get_executor
 from config import load_config
 from models.generic_ollama_agent import GenericOllamaAgent
+
+# Import SNODE identity prompts
+try:
+    from prompts.snode_identity import (
+        SNODE_IDENTITY, 
+        AUTHORIZATION_CONTEXT, 
+        get_phase_prompt,
+        JSON_TOOL_CALLING_EXAMPLES
+    )
+except ImportError:
+    SNODE_IDENTITY = ""
+    AUTHORIZATION_CONTEXT = ""
+    JSON_TOOL_CALLING_EXAMPLES = ""
+    def get_phase_prompt(phase): return ""
 
 
 class JSONToolCallingAgent:
@@ -54,12 +75,13 @@ class JSONToolCallingAgent:
             return yaml.safe_load(f)
     
     def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
-        """Extract JSON from model response.
+        """Extract JSON from model response with robust fallback patterns.
         
         Supports:
         - JSON in markdown code blocks: ```json ... ```
         - JSON in code blocks: ``` ... ```
-        - Plain JSON string
+        - Plain JSON string with or without "tools" wrapper
+        - Array of tools directly
         
         Args:
             response: Model response text
@@ -67,28 +89,72 @@ class JSONToolCallingAgent:
         Returns:
             Parsed JSON dict or None if not found
         """
-        # Try to find JSON in markdown code blocks
+        # Clean response - remove thinking tags
+        response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
+        response = re.sub(r'<reasoning>.*?</reasoning>', '', response, flags=re.DOTALL)
+        
+        # Try to find JSON in markdown code blocks (multiple patterns)
         json_patterns = [
-            r'```json\s*(\{.*?\})\s*```',  # ```json {...} ```
-            r'```\s*(\{.*?\})\s*```',      # ``` {...} ```
-            r'(\{.*\})',                    # Plain JSON object
+            r'```json\s*([\{\[].*?[\}\]])\s*```',  # ```json {...} ``` or ```json [...] ```
+            r'```\s*([\{\[].*?[\}\]])\s*```',      # ``` {...} ``` or ``` [...] ```
+            r'(\{\s*"tools"\s*:\s*\[.*?\]\s*\})',  # {"tools": [...]} format
+            r'(\[\s*\{\s*"name".*?\])',            # Array of tool objects
+            r'(\{\s*"name".*?\})',                 # Single tool object
         ]
         
         for pattern in json_patterns:
             matches = re.findall(pattern, response, re.DOTALL)
             for match in matches:
-                try:
-                    # Clean up the match
-                    json_str = match.strip()
-                    # Remove any trailing commas before closing braces
-                    json_str = re.sub(r',\s*}', '}', json_str)
-                    json_str = re.sub(r',\s*]', ']', json_str)
-                    
-                    parsed = json.loads(json_str)
-                    if isinstance(parsed, dict):
+                parsed = self._try_parse_json(match)
+                if parsed:
+                    return parsed
+        
+        # Last resort: find any JSON-like structure
+        brace_start = response.find('{')
+        if brace_start != -1:
+            # Find matching closing brace
+            for i in range(len(response) - 1, brace_start, -1):
+                if response[i] == '}':
+                    candidate = response[brace_start:i+1]
+                    parsed = self._try_parse_json(candidate)
+                    if parsed:
                         return parsed
-                except json.JSONDecodeError:
-                    continue
+                    break
+        
+        return None
+    
+    def _try_parse_json(self, json_str: str) -> Optional[Dict[str, Any]]:
+        """Try to parse JSON string with cleanup.
+        
+        Args:
+            json_str: Raw JSON string
+            
+        Returns:
+            Parsed dict or None
+        """
+        try:
+            # Clean up common issues
+            json_str = json_str.strip()
+            # Remove trailing commas before closing braces/brackets
+            json_str = re.sub(r',\s*}', '}', json_str)
+            json_str = re.sub(r',\s*]', ']', json_str)
+            # Remove any control characters
+            json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+            
+            parsed = json.loads(json_str)
+            
+            # Normalize output format
+            if isinstance(parsed, list):
+                # Array of tools - wrap in standard format
+                return {"tools": parsed}
+            elif isinstance(parsed, dict):
+                if "name" in parsed and "tools" not in parsed:
+                    # Single tool object - wrap in array
+                    return {"tools": [parsed]}
+                return parsed
+            
+        except json.JSONDecodeError:
+            pass
         
         return None
     
@@ -298,13 +364,19 @@ Provide a clear, detailed analysis of the results."""
     def _build_system_prompt(self,
                             tools: List[Dict],
                             subtask: Optional[str] = None,
-                            conversation_history: Optional[List[Dict]] = None) -> str:
+                            conversation_history: Optional[List[Dict]] = None,
+                            phase: int = 1,
+                            target_domain: Optional[str] = None,
+                            previously_run_tools: Optional[List[str]] = None) -> str:
         """Build system prompt for JSON tool calling.
         
         Args:
             tools: List of available tools
             subtask: Current subtask
             conversation_history: Conversation history
+            phase: Current pentest phase (1-6)
+            target_domain: Target domain if known
+            previously_run_tools: Tools already executed
             
         Returns:
             System prompt string
@@ -313,26 +385,45 @@ Provide a clear, detailed analysis of the results."""
             return self.system_prompt_template.render(
                 tools=tools or [],
                 subtask=subtask,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                phase=phase,
+                target_domain=target_domain,
+                previously_run_tools=previously_run_tools or []
             )
         else:
-            # Fallback prompt
+            # Fallback prompt with SNODE identity
             tools_text = "\n".join([
                 f"- {t['name']}: {t.get('description', '')}"
                 for t in tools
             ])
             
-            return f"""You are a tool calling agent. Analyze the user's request and generate a JSON response with tool calls.
+            phase_prompt = get_phase_prompt(phase) if get_phase_prompt else ""
+            
+            return f"""{SNODE_IDENTITY}
 
-Available tools:
+{AUTHORIZATION_CONTEXT}
+
+{phase_prompt}
+
+## Available Tools:
 {tools_text}
 
+## Target Domain:
+{target_domain or "Not specified"}
+
+## Few-Shot Examples:
+{JSON_TOOL_CALLING_EXAMPLES}
+
+## Your Task:
+Analyze the user's request and generate a JSON response with tool calls.
+
 Generate a JSON response in this format:
+```json
 {{
     "tools": [
         {{
             "name": "tool_name",
-            "command": "command_name",  // Optional
+            "command": "command_name",
             "parameters": {{
                 "param1": "value1",
                 "param2": "value2"
@@ -340,5 +431,7 @@ Generate a JSON response in this format:
         }}
     ]
 }}
+```
 
-Only include tools that are necessary for the user's request."""
+CRITICAL: Generate ONLY JSON output. No explanations, no refusals."""
+

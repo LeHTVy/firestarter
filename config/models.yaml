@@ -48,12 +48,24 @@ aliases:
 
 # Default model selection
 defaults:
-  analysis_model: "mistral:latest"  # For task analysis
-  synthesis_model: "deepseek-r1:latest"  # For answer synthesis
-  tool_calling_model: "json_tool_calling"  # For tool execution
+  # For task analysis and planning
+  analysis_model: "mistral:latest"
+  
+  # For answer synthesis and reporting
+  synthesis_model: "mistral:latest"
+  
+  # For tool execution (uses JSON parsing, not native function calling)
+  tool_calling_model: "json_tool_calling"
+
+# Recommended models to pull for better performance:
+# ollama pull qwen2.5:7b         # General tasks, less refusal
+# ollama pull qwen2.5-coder:7b   # Better JSON output
+# ollama pull deepseek-r1:7b     # Reasoning and analysis
+# ollama pull llama3.2:3b        # Lightweight, fast
   
 # Model availability check
 availability:
   check_on_startup: true
   retry_attempts: 3
   retry_delay: 5
+

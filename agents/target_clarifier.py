@@ -1,29 +1,55 @@
-"""Target clarifier for handling ambiguous targets."""
+"""Target clarifier for handling ambiguous targets.
 
-import json
+Pipeline: Lexical Normalize → Entity Candidates → Ambiguity Scoring → 
+          Web Search → Extract → Cross-check → Ask User
+"""
+
+import logging
 from typing import Dict, Any, Optional, Callable, List
+from pathlib import Path
+from urllib.parse import urlparse
+
+from jinja2 import Environment, FileSystemLoader
+
 from utils.input_normalizer import InputNormalizer
+from utils.llm_response_parser import parse_llm_json_response, parse_to_dataclass
 from models.generic_ollama_agent import GenericOllamaAgent
-# FunctionGemma removed - using tool calling registry instead
+from models.entity_info import (
+    EntityCandidate, EntityInfo, ValidationResult, 
+    ExtractedQuery, ClarificationResult
+)
 from memory.manager import MemoryManager
 from agents.context_manager import ContextManager
+from agents.messages import ClarificationMessages
 from rag.retriever import ConversationRetriever
-from pathlib import Path
-from jinja2 import Environment, FileSystemLoader
+
+logger = logging.getLogger(__name__)
 
 
 class TargetClarifier:
-    """Handles target clarification using tool calling and web search."""
+    """Handles target clarification using tool calling and web search.
     
-    def __init__(self,
-                 qwen3: GenericOllamaAgent,
-                 memory_manager: MemoryManager,
-                 context_manager: ContextManager,
-                 stream_callback: Optional[Callable[[str, str, Any], None]] = None):
+    Implements a clean pipeline:
+    1. Lexical Normalize - Normalize user input
+    2. Entity Candidates - Lookup from DB/Vector DB
+    3. Ambiguity Scoring - Calculate ambiguity score
+    4. Web Search - Search for entity if ambiguous
+    5. Extract - Extract structured info from results
+    6. Cross-check - Validate extracted info
+    7. Ask User - Confirm with user if needed
+    """
+    
+    def __init__(
+        self,
+        qwen3: GenericOllamaAgent,
+        memory_manager: MemoryManager,
+        context_manager: ContextManager,
+        stream_callback: Optional[Callable[[str, str, Any], None]] = None
+    ):
         """Initialize target clarifier.
         
         Args:
-            qwen3: Generic Ollama agent for AI understanding (e.g., Mistral)
+            qwen3: Generic Ollama agent for AI understanding
             memory_manager: Memory manager for session state
             context_manager: Context manager for session context
             stream_callback: Optional callback for streaming events
@@ -41,22 +67,63 @@ class TargetClarifier:
         # Initialize InputNormalizer for lexical normalization
         self.input_normalizer = InputNormalizer(ai_model=qwen3)
         
-        # Load prompt templates (with fallback if not available)
+        # Load prompt templates
+        self._load_templates()
+    
+    def _load_templates(self) -> None:
+        """Load Jinja2 prompt templates."""
         template_dir = Path(__file__).parent.parent / "prompts"
         self.env = Environment(loader=FileSystemLoader(str(template_dir)))
+        
         try:
             self.extraction_template = self.env.get_template("target_extraction.jinja2")
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to load extraction template: {e}")
             self.extraction_template = None
+            
         try:
             self.validation_template = self.env.get_template("target_validation.jinja2")
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to load validation template: {e}")
             self.validation_template = None
     
-    def _lookup_entity_candidates(self, 
-                                  query: str, 
-                                  conversation_id: Optional[str] = None,
-                                  session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _stream(self, event_type: str, source: str, data: Any) -> None:
+        """Send streaming event if callback is configured."""
+        if self.stream_callback:
+            self.stream_callback(event_type, source, data)
+    
+    # =========================================================================
+    # STEP 1: Lexical Normalize
+    # =========================================================================
+    
+    def _step_normalize(self, user_prompt: str) -> str:
+        """Normalize user input using RapidFuzz.
+        
+        Args:
+            user_prompt: Raw user input
+            
+        Returns:
+            Normalized prompt
+        """
+        try:
+            normalized = self.input_normalizer.normalize_target(user_prompt)
+            if normalized != user_prompt:
+                logger.debug(f"Normalized prompt: '{user_prompt}' -> '{normalized}'")
+            return normalized
+        except Exception as e:
+            logger.warning(f"Normalization failed: {e}")
+            return user_prompt
+    
+    # =========================================================================
+    # STEP 2: Entity Candidates (DB/Vector DB Lookup)
+    # =========================================================================
+    
+    def _step_lookup_candidates(
+        self, 
+        query: str, 
+        conversation_id: Optional[str] = None,
+        session_id: Optional[str] = None
+    ) -> List[EntityCandidate]:
         """Lookup entity candidates from DB/Vector DB.
         
         Args:
@@ -65,80 +132,136 @@ class TargetClarifier:
             session_id: Legacy session ID
             
         Returns:
-            List of candidate entities with confidence scores
+            List of EntityCandidate objects sorted by confidence
         """
+        candidates: List[EntityCandidate] = []
+        
+        # Search conversation history in Vector DB
+        candidates.extend(
+            self._search_conversation_history(query, conversation_id, session_id)
+        )
+        
+        # Search verified targets from database
+        candidates.extend(
+            self._search_verified_targets(query, conversation_id)
+        )
+        
+        # Deduplicate and sort by confidence
+        return self._deduplicate_candidates(candidates)
+    
+    def _search_conversation_history(
+        self,
+        query: str,
+        conversation_id: Optional[str],
+        session_id: Optional[str]
+    ) -> List[EntityCandidate]:
+        """Search conversation history for entity candidates."""
+        candidates = []
+        conv_id = conversation_id or session_id
+        
+        if not conv_id:
+            return candidates
+        
+        try:
+            context_results = self.conversation_retriever.retrieve_context(
+                query=query,
+                k=5,
+                conversation_id=conversation_id,
+                session_id=session_id
+            )
+            
+            import re
+            domain_pattern = re.compile(
+                r'\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?'
+                r'\.(?:[a-zA-Z]{2,}))\b'
+            )
+            
+            for result in context_results:
+                content = result.get("content", "") or result.get("text", "")
+                if not content:
+                    continue
+                    
+                domains = domain_pattern.findall(content)
+                for domain in domains[:3]:
+                    candidates.append(EntityCandidate(
+                        domain=domain.lower(),
+                        source="conversation_history",
+                        confidence=0.6,
+                        context=content[:200]
+                    ))
+                    
+        except Exception as e:
+            logger.debug(f"Conversation history search failed: {e}")
+        
+        return candidates
+    
+    def _search_verified_targets(
+        self,
+        query: str,
+        conversation_id: Optional[str]
+    ) -> List[EntityCandidate]:
+        """Search verified targets from database."""
         candidates = []
         
-        # 1. Search conversation history in Vector DB
         try:
-            conv_id = conversation_id or session_id
-            if conv_id:
-                # Search in conversation-specific vector store
-                context_results = self.conversation_retriever.retrieve_context(
-                    query=query,
-                    k=5,
-                    conversation_id=conversation_id,
-                    session_id=session_id
-                )
-                
-                for result in context_results:
-                    content = result.get("content", "") or result.get("text", "")
-                    if content:
-                        import re
-                        domain_pattern = re.compile(r'\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.(?:[a-zA-Z]{2,}))\b')
-                        domains = domain_pattern.findall(content)
-                        
-                        for domain in domains[:3]:
-                            candidates.append({
-                                "domain": domain.lower(),
-                                "source": "conversation_history",
-                                "confidence": 0.6,
-                                "context": content[:200]
-                            })
-        except Exception as e:
-            pass
-        
-        try:
-            conversations = self.memory_manager.conversation_store.list_conversations(limit=100)
+            from rapidfuzz import fuzz
+            
+            conversations = self.memory_manager.conversation_store.list_conversations(
+                limit=100
+            )
+            
+            query_lower = query.lower()
             
             for conv in conversations:
                 verified_target = conv.get('verified_target')
-                if verified_target:
-                    query_lower = query.lower()
-                    target_lower = verified_target.lower()
+                if not verified_target:
+                    continue
                     
-                    # Check if query matches target
-                    if query_lower in target_lower or target_lower in query_lower:
-                        from rapidfuzz import fuzz
-                        similarity = fuzz.ratio(query_lower, target_lower) / 100.0
+                target_lower = verified_target.lower()
+                
+                if query_lower in target_lower or target_lower in query_lower:
+                    similarity = fuzz.ratio(query_lower, target_lower) / 100.0
+                    
+                    if similarity > 0.5:
+                        candidates.append(EntityCandidate(
+                            domain=verified_target,
+                            source="verified_targets_db",
+                            confidence=similarity * 0.8,
+                            conversation_id=conv.get('id')
+                        ))
                         
-                        if similarity > 0.5:
-                            candidates.append({
-                                "domain": verified_target,
-                                "source": "verified_targets_db",
-                                "confidence": similarity * 0.8,
-                                "conversation_id": conv.get('id')
-                            })
         except Exception as e:
-            pass
+            logger.debug(f"Verified targets search failed: {e}")
         
-        seen_domains = set()
-        unique_candidates = []
-        for candidate in candidates:
-            domain = candidate.get("domain", "")
-            if domain and domain not in seen_domains:
-                seen_domains.add(domain)
-                unique_candidates.append(candidate)
-        
-        unique_candidates.sort(key=lambda x: x.get("confidence", 0), reverse=True)
-        
-        return unique_candidates[:5]
+        return candidates
     
-    def _calculate_ambiguity_score(self, 
-                                  candidates: List[Dict[str, Any]], 
-                                  company_name: Optional[str] = None,
-                                  location: Optional[str] = None) -> float:
-        """Calculate ambiguity score (0-1) based on number of candidates and confidence.
+    def _deduplicate_candidates(
+        self, 
+        candidates: List[EntityCandidate]
+    ) -> List[EntityCandidate]:
+        """Remove duplicate candidates and sort by confidence."""
+        seen_domains = set()
+        unique = []
+        
+        for candidate in candidates:
+            if candidate.domain and candidate.domain not in seen_domains:
+                seen_domains.add(candidate.domain)
+                unique.append(candidate)
+        
+        unique.sort(key=lambda x: x.confidence, reverse=True)
+        return unique[:5]
+    
+    # =========================================================================
+    # STEP 3: Ambiguity Scoring
+    # =========================================================================
+    
+    def _step_calculate_ambiguity(
+        self, 
+        candidates: List[EntityCandidate], 
+        company_name: Optional[str] = None,
+        location: Optional[str] = None
+    ) -> float:
+        """Calculate ambiguity score (0-1).
         
         Args:
             candidates: List of entity candidates
@@ -149,93 +272,109 @@ class TargetClarifier:
             Ambiguity score (0 = clear, 1 = highly ambiguous)
         """
         if not candidates:
-            return 1.0  
+            return 1.0
         
         if len(candidates) == 1:
-            # Single candidate - score based on confidence
-            confidence = candidates[0].get("confidence", 0)
-            return 1.0 - confidence  
+            return 1.0 - candidates[0].confidence
         
-        num_candidates = len(candidates)
-        confidences = [c.get("confidence", 0) for c in candidates]
+        # Multiple candidates - calculate based on spread
+        confidences = [c.confidence for c in candidates]
         max_conf = max(confidences)
         min_conf = min(confidences)
         conf_spread = max_conf - min_conf
         
-        base_ambiguity = min(0.8, 0.3 + (num_candidates - 1) * 0.15)
+        base_ambiguity = min(0.8, 0.3 + (len(candidates) - 1) * 0.15)
         
+        # Large confidence spread reduces ambiguity
         if conf_spread > 0.3:
             base_ambiguity *= 0.6
         
+        # Having both name and location reduces ambiguity
         if company_name and location:
             base_ambiguity *= 0.7
         
         return min(1.0, base_ambiguity)
     
-    def _format_multiple_candidates(self, candidates: List[Dict[str, Any]]) -> str:
-        """Format multiple candidates for user selection (like ChatGPT).
-        
-        Args:
-            candidates: List of candidate entities
-            
-        Returns:
-            Formatted message showing all candidates
-        """
-        if not candidates:
-            return ""
-        
-        message = f"Mình tìm thấy {len(candidates)} công ty/tổ chức có thể khớp:\n\n"
-        
-        for i, candidate in enumerate(candidates, 1):
-            domain = candidate.get("domain", "N/A")
-            source = candidate.get("source", "unknown")
-            confidence = candidate.get("confidence", 0)
-            
-            legal_name = candidate.get("legal_name", "")
-            country = candidate.get("country", "")
-            asn = candidate.get("asn")
-            ip_ranges = candidate.get("ip_ranges", [])
-            
-            message += f"{i}. "
-            if legal_name:
-                message += f"{legal_name}"
-            else:
-                message += f"{domain}"
-            
-            if country:
-                message += f" – {country}"
-            
-            message += f" – domain: {domain}"
-            
-            if asn:
-                message += f" – ASN: {asn}"
-            
-            if ip_ranges:
-                message += f" – IP ranges: {', '.join(ip_ranges[:3])}"
-            
-            message += f" (confidence: {int(confidence * 100)}%)\n"
-        
-        message += f"\nBạn đang nói tới công ty nào? (Nhập số 1-{len(candidates)} hoặc cung cấp thêm thông tin)"
-        
-        return message
+    # =========================================================================
+    # STEP 4: Web Search
+    # =========================================================================
     
-    def _generate_search_queries(self, 
-                               company_name: Optional[str],
-                               location: Optional[str],
-                               user_prompt: str,
-                               context: str) -> List[str]:
-        """Generate intelligent search queries using LLM.
+    def _step_web_search(
+        self,
+        company_name: Optional[str],
+        location: Optional[str],
+        user_prompt: str,
+        context: str,
+        conversation_id: Optional[str],
+        conversation_history: List[Dict[str, Any]]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Execute web search for entity.
         
         Args:
-            company_name: Company name
+            company_name: Company name to search
             location: Location/country
             user_prompt: Original user prompt
             context: Conversation context
+            conversation_id: Current conversation ID
+            conversation_history: Conversation history
             
         Returns:
-            List of suggested search queries
+            List of search results or None if search failed
         """
-        query_generation_prompt = f"""Generate 3-5 intelligent web search queries to find the official website domain for a company/organization.
+        # Generate search queries
+        search_queries = self._generate_search_queries(
+            company_name, location, user_prompt, context
+        )
+        
+        # Build prompt for tool calling
+        target_verification_prompt = self._build_search_prompt(
+            company_name, location, context, user_prompt, search_queries
+        )
+        
+        try:
+            # Create streaming callbacks
+            model_callback = None
+            tool_stream_callback = None
+            
+            if self.stream_callback:
+                def callback(chunk: str):
+                    self._stream("model_response", "tool_calling_verify", chunk)
+                model_callback = callback
+                
+                def tool_callback(tool_name: str, command: str, line: str):
+                    self._stream("tool_execution", tool_name, line)
+                tool_stream_callback = tool_callback
+            
+            # Execute tool calling
+            tool_calling_agent = self.tool_calling_registry.get_model()
+            result = tool_calling_agent.call_with_tools(
+                user_prompt=target_verification_prompt,
+                tools=["web_search"],
+                session_id=conversation_id,
+                conversation_history=conversation_history,
+                stream_callback=model_callback,
+                tool_stream_callback=tool_stream_callback
+            )
+            
+            return self._extract_search_results(result)
+            
+        except Exception as e:
+            logger.error(f"Web search failed: {e}")
+            self._stream(
+                "model_response", "system",
+                ClarificationMessages.AUTO_SEARCH_FAILED.format(error=str(e))
+            )
+            return None
+    
+    def _generate_search_queries(
+        self,
+        company_name: Optional[str],
+        location: Optional[str],
+        user_prompt: str,
+        context: str
+    ) -> List[str]:
+        """Generate intelligent search queries using LLM."""
+        query_prompt = f"""Generate 3-5 intelligent web search queries to find the official website domain for a company/organization.
 
 Company name: {company_name or 'unknown'}
 Location: {location or 'unknown'}
@@ -253,34 +392,19 @@ Return a JSON array of query strings:
         
         try:
             result = self.qwen3.analyze_and_breakdown(
-                user_prompt=query_generation_prompt,
+                user_prompt=query_prompt,
                 conversation_history=None
             )
             
             if result.get("success"):
-                response_text = result.get("raw_response", "")
-                
-                if "```json" in response_text:
-                    json_start = response_text.find("```json") + 7
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                elif "```" in response_text:
-                    json_start = response_text.find("```") + 3
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                else:
-                    json_text = response_text
-                
-                try:
-                    parsed = json.loads(json_text)
-                    queries = parsed.get("queries", [])
-                    if queries:
-                        return queries
-                except json.JSONDecodeError:
-                    pass
-        except Exception:
-            pass
+                parsed = parse_llm_json_response(result.get("raw_response", ""))
+                if parsed and "queries" in parsed:
+                    return parsed["queries"]
+                    
+        except Exception as e:
+            logger.debug(f"Query generation failed: {e}")
         
+        # Fallback queries
         queries = []
         if company_name and location:
             queries.append(f"{company_name} {location} official website domain")
@@ -294,10 +418,82 @@ Return a JSON array of query strings:
         
         return queries[:5]
     
-    def _extract_structured_info(self, search_results: List[Dict[str, Any]], 
-                                 company_name: Optional[str] = None,
-                                 location: Optional[str] = None) -> Dict[str, Any]:
-        """Extract structured information from web search results using LLM.
+    def _build_search_prompt(
+        self,
+        company_name: Optional[str],
+        location: Optional[str],
+        context: str,
+        user_prompt: str,
+        search_queries: List[str]
+    ) -> str:
+        """Build prompt for tool calling with search queries."""
+        queries_text = "\n".join(f"- {q}" for q in search_queries[:3])
+        
+        return f"""You need to find the official website domain for a company/organization.
+
+Company name: {company_name or 'unknown'}
+Location: {location or 'unknown'}
+Previous conversation context: {context}
+Current user message: {user_prompt}
+
+Suggested search queries (use one of these or create similar):
+{queries_text}
+
+Your task:
+1. Call the web_search tool with an appropriate query to find the official website domain
+2. The query should combine company name and location intelligently
+3. Use num_results=5 to get multiple search results
+4. The goal is to find the most relevant domain that matches the company name and location
+
+Target: Find the official website domain for this company/organization."""
+    
+    def _extract_search_results(
+        self, 
+        tool_result: Dict[str, Any]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Extract search results from tool calling result."""
+        if not tool_result.get("success"):
+            error = tool_result.get("error", "Unknown error")
+            self._stream(
+                "model_response", "system",
+                ClarificationMessages.AUTO_SEARCH_FAILED.format(error=error)
+            )
+            return None
+        
+        tool_results = tool_result.get("tool_results", [])
+        
+        if not tool_results:
+            self._stream(
+                "model_response", "system",
+                ClarificationMessages.NO_TOOL_CALL
+            )
+            return None
+        
+        for tr in tool_results:
+            if tr.get("tool_name") == "web_search":
+                result = tr.get("result", {})
+                if result.get("success"):
+                    return result.get("results", [])
+                else:
+                    error = result.get("error", "Unknown error")
+                    self._stream(
+                        "model_response", "system",
+                        ClarificationMessages.SEARCH_FAILED.format(error=error)
+                    )
+        
+        return None
+    
+    # =========================================================================
+    # STEP 5: Extract Structured Info
+    # =========================================================================
+    
+    def _step_extract_info(
+        self, 
+        search_results: List[Dict[str, Any]], 
+        company_name: Optional[str] = None,
+        location: Optional[str] = None
+    ) -> EntityInfo:
+        """Extract structured information from web search results.
         
         Args:
             search_results: List of web search result dicts
@@ -305,16 +501,18 @@ Return a JSON array of query strings:
             location: Optional location for context
             
         Returns:
-            Structured info dict with legal_name, country, domain, asn, ip_ranges, confidence
+            EntityInfo with extracted data
         """
-        formatted_results = []
-        for i, result in enumerate(search_results[:10], 1):
-            formatted_results.append({
-                "title": result.get("title", ""),
-                "snippet": result.get("snippet", ""),
-                "link": result.get("link", "")
-            })
+        formatted_results = [
+            {
+                "title": r.get("title", ""),
+                "snippet": r.get("snippet", ""),
+                "link": r.get("link", "")
+            }
+            for r in search_results[:10]
+        ]
         
+        # Build extraction prompt
         if self.extraction_template:
             extraction_prompt = self.extraction_template.render(
                 search_results=formatted_results,
@@ -322,13 +520,43 @@ Return a JSON array of query strings:
                 location=location or "unknown"
             )
         else:
-            # Fallback inline prompt
-            results_text = "\n\n".join([
-                f"Result {i}:\nTitle: {r['title']}\nSnippet: {r['snippet']}\nLink: {r['link']}"
-                for i, r in enumerate(formatted_results, 1)
-            ])
+            extraction_prompt = self._build_extraction_prompt(
+                formatted_results, company_name, location
+            )
+        
+        try:
+            result = self.qwen3.analyze_and_breakdown(
+                user_prompt=extraction_prompt,
+                conversation_history=None
+            )
             
-            extraction_prompt = f"""Extract structured information about a company/organization from web search results.
+            if result.get("success"):
+                parsed = parse_llm_json_response(result.get("raw_response", ""))
+                if parsed:
+                    return EntityInfo.from_dict(parsed)
+            
+            # Fallback: extract domain from search results heuristically
+            return self._extract_domain_fallback(
+                search_results, company_name, location
+            )
+            
+        except Exception as e:
+            logger.error(f"Info extraction failed: {e}")
+            return EntityInfo.empty()
+    
+    def _build_extraction_prompt(
+        self,
+        formatted_results: List[Dict[str, str]],
+        company_name: Optional[str],
+        location: Optional[str]
+    ) -> str:
+        """Build inline extraction prompt when template not available."""
+        results_text = "\n\n".join([
+            f"Result {i}:\nTitle: {r['title']}\nSnippet: {r['snippet']}\nLink: {r['link']}"
+            for i, r in enumerate(formatted_results, 1)
+        ])
+        
+        return f"""Extract structured information about a company/organization from web search results.
 
 Company name (if known): {company_name or 'unknown'}
 Location (if known): {location or 'unknown'}
@@ -346,114 +574,93 @@ Extract the following information in JSON format:
     "confidence": 0.0-1.0
 }}
 
-Only extract information that is clearly stated in the search results. If information is not found, use null for strings or empty arrays for lists."""
+Only extract information that is clearly stated in the search results."""
+    
+    def _extract_domain_fallback(
+        self,
+        search_results: List[Dict[str, Any]],
+        company_name: Optional[str],
+        location: Optional[str]
+    ) -> EntityInfo:
+        """Fallback domain extraction using heuristics."""
+        domain = None
+        
+        for result in search_results:
+            link = result.get("link", "")
+            if link:
+                try:
+                    parsed = urlparse(link)
+                    extracted = parsed.netloc.replace("www.", "").lower()
+                    if extracted and len(extracted) > 3:
+                        domain = extracted
+                        break
+                except Exception:
+                    continue
+        
+        return EntityInfo(
+            legal_name=company_name or "",
+            country=location or "",
+            domain=domain or "",
+            confidence=0.3  # Low confidence for fallback
+        )
+    
+    # =========================================================================
+    # STEP 6: Cross-check Entity
+    # =========================================================================
+    
+    def _step_cross_check(
+        self, 
+        extracted_infos: List[EntityInfo]
+    ) -> ValidationResult:
+        """Cross-check extracted entity information for consistency.
+        
+        Args:
+            extracted_infos: List of extracted EntityInfo from multiple sources
+            
+        Returns:
+            ValidationResult with confidence and conflicts
+        """
+        if not extracted_infos:
+            return ValidationResult.failed("No extracted information")
+        
+        # Convert to dicts for template
+        infos_dicts = [info.to_dict() for info in extracted_infos]
+        
+        # Build validation prompt
+        if self.validation_template:
+            validation_prompt = self.validation_template.render(
+                extracted_infos=infos_dicts
+            )
+        else:
+            validation_prompt = self._build_validation_prompt(infos_dicts)
         
         try:
-            # Use Qwen3 to extract structured info
             result = self.qwen3.analyze_and_breakdown(
-                user_prompt=extraction_prompt,
+                user_prompt=validation_prompt,
                 conversation_history=None
             )
             
             if result.get("success"):
-                analysis = result.get("analysis", {})
-                
-                # Try to parse JSON from response
-                response_text = result.get("raw_response", "")
-                
-                # Extract JSON from markdown code blocks if present
-                if "```json" in response_text:
-                    json_start = response_text.find("```json") + 7
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                elif "```" in response_text:
-                    json_start = response_text.find("```") + 3
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                else:
-                    json_text = response_text
-                
-                try:
-                    structured_info = json.loads(json_text)
-                    
-                    # Validate and normalize
-                    return {
-                        "legal_name": structured_info.get("legal_name") or "",
-                        "country": structured_info.get("country") or "",
-                        "domain": structured_info.get("domain") or "",
-                        "asn": structured_info.get("asn"),
-                        "ip_ranges": structured_info.get("ip_ranges") or [],
-                        "confidence": min(1.0, max(0.0, float(structured_info.get("confidence", 0.5))))
-                    }
-                except json.JSONDecodeError:
-                    # Fallback: try to extract from raw response
-                    pass
+                parsed = parse_llm_json_response(result.get("raw_response", ""))
+                if parsed:
+                    return self._parse_validation_result(parsed)
             
-            # Fallback: extract domain from search results (simple heuristic)
-            domain = None
-            for result in search_results:
-                link = result.get("link", "")
-                if link:
-                    from urllib.parse import urlparse
-                    try:
-                        parsed = urlparse(link)
-                        domain = parsed.netloc.replace("www.", "").lower()
-                        if domain and len(domain) > 3:
-                            break
-                    except:
-                        continue
-            
-            return {
-                "legal_name": company_name or "",
-                "country": location or "",
-                "domain": domain or "",
-                "asn": None,
-                "ip_ranges": [],
-                "confidence": 0.3  # Low confidence for fallback
-            }
+            # Fallback: simple heuristic validation
+            return self._validate_fallback(extracted_infos)
             
         except Exception as e:
-            # Return minimal structure on error
-            return {
-                "legal_name": company_name or "",
-                "country": location or "",
-                "domain": "",
-                "asn": None,
-                "ip_ranges": [],
-                "confidence": 0.0
-            }
+            logger.error(f"Cross-check failed: {e}")
+            return self._validate_fallback(extracted_infos)
     
-    def _cross_check_entity(self, 
-                           extracted_infos: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Cross-check extracted entity information for consistency.
+    def _build_validation_prompt(self, infos_dicts: List[Dict[str, Any]]) -> str:
+        """Build inline validation prompt when template not available."""
+        import json
+        infos_text = "\n\n".join([
+            f"Source {i}:\n{json.dumps(info, indent=2)}"
+            for i, info in enumerate(infos_dicts, 1)
+        ])
         
-        Args:
-            extracted_infos: List of extracted info dicts from multiple sources
-            
-        Returns:
-            Validation result with confidence, validation flags, and conflicts
-        """
-        if not extracted_infos:
-            return {
-                "valid": False,
-                "confidence": 0.0,
-                "conflicts": [],
-                "validated_info": None
-            }
-        
-        # Use prompt template if available
-        if self.validation_template:
-            validation_prompt = self.validation_template.render(
-                extracted_infos=extracted_infos
-            )
-        else:
-            # Fallback inline prompt
-            infos_text = "\n\n".join([
-                f"Source {i}:\n{json.dumps(info, indent=2)}"
-                for i, info in enumerate(extracted_infos, 1)
-            ])
-            
-            validation_prompt = f"""Validate and cross-check entity information from multiple sources.
+        return f"""Validate and cross-check entity information from multiple sources.
 
 Extracted Information:
 {infos_text}
@@ -477,136 +684,107 @@ Return JSON:
         "ip_ranges": ["best IP ranges"]
     }}
 }}"""
-        
-        try:
-            result = self.qwen3.analyze_and_breakdown(
-                user_prompt=validation_prompt,
-                conversation_history=None
-            )
-            
-            if result.get("success"):
-                response_text = result.get("raw_response", "")
-                
-                # Extract JSON
-                if "```json" in response_text:
-                    json_start = response_text.find("```json") + 7
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                elif "```" in response_text:
-                    json_start = response_text.find("```") + 3
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                else:
-                    json_text = response_text
-                
-                try:
-                    validation_result = json.loads(json_text)
-                    return validation_result
-                except json.JSONDecodeError:
-                    pass
-            
-            # Fallback: simple heuristic validation
-            # Take the info with highest confidence
-            best_info = max(extracted_infos, key=lambda x: x.get("confidence", 0))
-            
-            # Simple consistency checks
-            conflicts = []
-            domains = [info.get("domain") for info in extracted_infos if info.get("domain")]
-            if len(set(domains)) > 1:
-                conflicts.append("Multiple different domains found")
-            
-            countries = [info.get("country") for info in extracted_infos if info.get("country")]
-            if len(set(countries)) > 1:
-                conflicts.append("Multiple different countries found")
-            
-            return {
-                "valid": len(conflicts) == 0,
-                "confidence": best_info.get("confidence", 0.5),
-                "conflicts": conflicts,
-                "validated_info": best_info
-            }
-            
-        except Exception as e:
-            # Fallback on error
-            best_info = max(extracted_infos, key=lambda x: x.get("confidence", 0)) if extracted_infos else None
-            return {
-                "valid": best_info is not None,
-                "confidence": best_info.get("confidence", 0.3) if best_info else 0.0,
-                "conflicts": ["Validation error"],
-                "validated_info": best_info
-            }
     
-    def clarify_target(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Clarify ambiguous target using tool calling and web search.
+    def _parse_validation_result(self, parsed: Dict[str, Any]) -> ValidationResult:
+        """Parse validation result from LLM response."""
+        validated_info = None
+        if parsed.get("validated_info"):
+            validated_info = EntityInfo.from_dict(parsed["validated_info"])
         
-        Pipeline:
-        1. Lexical Normalize (RapidFuzz) - normalize user input
-        2. Entity Candidates (DB/Vector DB) - lookup existing entities
-        3. Ambiguity Detection & Scoring - check if ambiguous and score
-        4. Web Search Tool - if ambiguous, search for entity
-        5. Structured Extraction - extract legal_name, country, domain, ASN, IP ranges
-        6. LLM Reasoning + Cross-check - validate and cross-check extracted info
-        7. Ask User (Confirm) - show candidates (multiple if ambiguous) for confirmation
+        return ValidationResult(
+            valid=bool(parsed.get("valid", False)),
+            confidence=float(parsed.get("confidence", 0.0)),
+            conflicts=parsed.get("conflicts", []),
+            validated_info=validated_info
+        )
+    
+    def _validate_fallback(
+        self, 
+        extracted_infos: List[EntityInfo]
+    ) -> ValidationResult:
+        """Fallback validation using simple heuristics."""
+        best_info = max(extracted_infos, key=lambda x: x.confidence)
+        
+        conflicts = []
+        
+        # Check domain consistency
+        domains = [info.domain for info in extracted_infos if info.domain]
+        if len(set(domains)) > 1:
+            conflicts.append("Multiple different domains found")
+        
+        # Check country consistency
+        countries = [info.country for info in extracted_infos if info.country]
+        if len(set(countries)) > 1:
+            conflicts.append("Multiple different countries found")
+        
+        return ValidationResult(
+            valid=len(conflicts) == 0,
+            confidence=best_info.confidence,
+            conflicts=conflicts,
+            validated_info=best_info
+        )
+    
+    # =========================================================================
+    # STEP 7: Ask User / Format Response
+    # =========================================================================
+    
+    def _step_ask_user(
+        self,
+        candidates: List[EntityCandidate],
+        entity_info: Optional[EntityInfo] = None,
+        validation: Optional[ValidationResult] = None,
+        potential_targets: Optional[List[str]] = None,
+        suggested_questions: Optional[List[str]] = None
+    ) -> str:
+        """Format response for user confirmation or selection.
         
         Args:
-            state: GraphState dictionary
+            candidates: List of entity candidates
+            entity_info: Extracted entity info (if available)
+            validation: Validation result (if available)
+            potential_targets: Potential target names from classification
+            suggested_questions: Suggested clarification questions
             
         Returns:
-            Updated state dictionary
+            Formatted message for user
         """
-        # STEP 1: Lexical Normalize (RapidFuzz) - Normalize user input first
-        user_prompt = state["user_prompt"]
-        normalized_prompt = self.input_normalizer.normalize_target(user_prompt)
-        if normalized_prompt != user_prompt:
-            user_prompt = normalized_prompt
-            state["user_prompt"] = normalized_prompt
+        # Multiple candidates - show selection
+        if len(candidates) > 1:
+            candidates_dicts = [c.to_dict() for c in candidates[:3]]
+            return ClarificationMessages.format_candidates_found(candidates_dicts)
         
-        # First check if target already verified
-        conversation_id = state.get("conversation_id") or state.get("session_id")
-        verified_target = self.memory_manager.get_verified_target(
-            session_id=conversation_id,
-            conversation_id=conversation_id if state.get("conversation_id") else None
+        # Single validated entity - show confirmation
+        if entity_info and entity_info.is_valid():
+            conflicts = validation.conflicts if validation else []
+            confidence = validation.confidence if validation else entity_info.confidence
+            
+            return ClarificationMessages.format_confirmation(
+                legal_name=entity_info.legal_name,
+                country=entity_info.country,
+                domain=entity_info.domain,
+                asn=entity_info.asn,
+                ip_ranges=entity_info.ip_ranges,
+                confidence=confidence,
+                conflicts=conflicts
+            )
+        
+        # No valid info - ask for more details
+        target = potential_targets[0] if potential_targets else "the target"
+        return ClarificationMessages.format_need_more_info(
+            target=target,
+            suggested_questions=suggested_questions
         )
-        
-        if verified_target:
-            # Target already verified, skip clarification
-            clarification = state.get("target_clarification", {})
-            clarification["is_ambiguous"] = False
-            clarification["verified_domain"] = verified_target
-            state["target_clarification"] = clarification
-            
-            # Update session context
-            session_context = self.context_manager.get_context()
-            if session_context:
-                session_context = session_context.merge_with({"target_domain": verified_target})
-                state["session_context"] = session_context.to_dict()
-            
-            # Update user prompt to include verified domain
-            state["user_prompt"] = f"{state['user_prompt']} {verified_target}"
-            
-            return state
-        
-        clarification = state.get("target_clarification", {})
-        potential_targets = clarification.get("potential_targets", [])
-        suggested_questions = clarification.get("suggested_questions", [])
-        can_search = clarification.get("can_search", False)
-        search_context = clarification.get("search_context", {})
-        
-        # Get conversation context
-        conversation_history = state.get("conversation_history", [])
-        
-        # Build context for AI to understand
-        context_text = ""
-        if conversation_history:
-            recent_messages = conversation_history[-3:] if len(conversation_history) > 3 else conversation_history
-            context_text = " ".join([msg.get("content", "") for msg in recent_messages if isinstance(msg, dict)])
-        
-        # Extract company name and location from search_context or potential_targets
-        company_name = search_context.get("company_name") or (potential_targets[0] if potential_targets else None)
-        location = search_context.get("location")
-        
-        # ALWAYS try to extract company_name and location from user prompt
-        # This handles cases like "hellogroup from South Africa" or "My target is company from country"
+    
+    # =========================================================================
+    # Extract Query Info (Company Name / Location)
+    # =========================================================================
+    
+    def _extract_query_info(
+        self, 
+        user_prompt: str, 
+        context_text: str
+    ) -> ExtractedQuery:
+        """Extract company name and location from user prompt using LLM."""
         extraction_prompt = f"""Extract company name and location from the following user message.
 User message: {user_prompt}
 Previous context: {context_text}
@@ -630,310 +808,288 @@ Return only valid JSON:"""
             )
             
             if result.get("success"):
-                response_text = result.get("raw_response", "")
-                
-                # Extract JSON from markdown code blocks if present
-                if "```json" in response_text:
-                    json_start = response_text.find("```json") + 7
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                elif "```" in response_text:
-                    json_start = response_text.find("```") + 3
-                    json_end = response_text.find("```", json_start)
-                    json_text = response_text[json_start:json_end].strip()
-                else:
-                    json_text = response_text
-                
-                try:
-                    extracted = json.loads(json_text)
-                    # Update company_name and location if extracted (override existing if better)
-                    extracted_company = extracted.get("company_name")
-                    extracted_location = extracted.get("location")
+                parsed = parse_llm_json_response(result.get("raw_response", ""))
+                if parsed:
+                    return ExtractedQuery.from_dict(parsed)
                     
-                    if extracted_company:
-                        company_name = extracted_company
-                    if extracted_location:
-                        location = extracted_location
-                except json.JSONDecodeError:
-                    pass  # Fallback to existing values
-        except Exception:
-            pass  # Fallback to existing values
+        except Exception as e:
+            logger.debug(f"Query info extraction failed: {e}")
         
-        # STEP 2: Entity Candidates (DB/Vector DB) - Lookup existing entities
-        entity_candidates = []
+        return ExtractedQuery()
+    
+    # =========================================================================
+    # Main Pipeline Entry Point
+    # =========================================================================
+    
+    def clarify_target(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Clarify ambiguous target using the full pipeline.
+        
+        Pipeline:
+        1. Lexical Normalize (RapidFuzz) - normalize user input
+        2. Entity Candidates (DB/Vector DB) - lookup existing entities
+        3. Ambiguity Detection & Scoring - check if ambiguous and score
+        4. Web Search Tool - if ambiguous, search for entity
+        5. Structured Extraction - extract legal_name, country, domain, ASN, IP ranges
+        6. LLM Reasoning + Cross-check - validate and cross-check extracted info
+        7. Ask User (Confirm) - show candidates (multiple if ambiguous) for confirmation
+        
+        Args:
+            state: GraphState dictionary
+            
+        Returns:
+            Updated state dictionary
+        """
+        # STEP 1: Lexical Normalize
+        user_prompt = state["user_prompt"]
+        user_prompt = self._step_normalize(user_prompt)
+        state["user_prompt"] = user_prompt
+        
+        # Check if target already verified
+        conversation_id = state.get("conversation_id") or state.get("session_id")
+        verified_target = self.memory_manager.get_verified_target(
+            session_id=conversation_id,
+            conversation_id=conversation_id if state.get("conversation_id") else None
+        )
+        
+        if verified_target:
+            return self._handle_verified_target(state, verified_target)
+        
+        # Get existing clarification state
+        clarification = state.get("target_clarification", {})
+        potential_targets = clarification.get("potential_targets", [])
+        suggested_questions = clarification.get("suggested_questions", [])
+        search_context = clarification.get("search_context", {})
+        
+        # Build conversation context
+        conversation_history = state.get("conversation_history", [])
+        context_text = self._build_context_text(conversation_history)
+        
+        # Extract company name and location
+        company_name = search_context.get("company_name")
+        location = search_context.get("location")
+        
+        if potential_targets and not company_name:
+            company_name = potential_targets[0]
+        
+        # Use LLM to extract query info
+        query_info = self._extract_query_info(user_prompt, context_text)
+        if query_info.company_name:
+            company_name = query_info.company_name
+        if query_info.location:
+            location = query_info.location
+        
+        # STEP 2: Entity Candidates
+        candidates = []
         if company_name or user_prompt:
             search_query = company_name or user_prompt
-            entity_candidates = self._lookup_entity_candidates(
+            candidates = self._step_lookup_candidates(
                 query=search_query,
                 conversation_id=conversation_id if state.get("conversation_id") else None,
                 session_id=conversation_id
             )
             
-            # STEP 3: Ambiguity Scoring - Calculate ambiguity score based on candidates
-            ambiguity_score = self._calculate_ambiguity_score(entity_candidates, company_name, location)
+            # STEP 3: Ambiguity Scoring
+            ambiguity_score = self._step_calculate_ambiguity(
+                candidates, company_name, location
+            )
             clarification["ambiguity_score"] = ambiguity_score
             
-            # If we found high-confidence candidates (>0.8), use them directly
-            if entity_candidates and entity_candidates[0].get("confidence", 0) > 0.8:
-                best_candidate = entity_candidates[0]
-                found_domain = best_candidate.get("domain")
-                
-                if found_domain:
-                    # Use candidate from DB, skip web search
-                    if conversation_id:
-                        self.memory_manager.save_verified_target(
-                            session_id=conversation_id,
-                            domain=found_domain,
-                            conversation_id=conversation_id if state.get("conversation_id") else None
-                        )
-                    
-                    clarification["is_ambiguous"] = False
-                    clarification["verified_domain"] = found_domain
-                    state["target_clarification"] = clarification
-                    state["user_prompt"] = f"{state['user_prompt']} {found_domain}"
-                    
-                    if self.stream_callback:
-                        self.stream_callback("model_response", "system", 
-                            f"Found verified target from database: {found_domain}")
-                    
-                    return state
+            # High-confidence candidate from DB
+            if candidates and candidates[0].confidence > 0.8:
+                return self._handle_high_confidence_candidate(
+                    state, candidates[0], clarification, conversation_id
+                )
             
-            # If we have multiple candidates with similar confidence, show all for user selection
-            if len(entity_candidates) > 1 and ambiguity_score > 0.5:
-                # Multiple candidates found - show all for user to choose
-                candidates_message = self._format_multiple_candidates(entity_candidates[:3])  # Top 3
-                state["final_answer"] = candidates_message
-                
-                if self.stream_callback:
-                    self.stream_callback("state_update", "clarify_target", None)
-                    self.stream_callback("model_response", "system", candidates_message)
-                
-                return state
+            # Multiple candidates with similar confidence
+            if len(candidates) > 1 and ambiguity_score > 0.5:
+                return self._handle_multiple_candidates(
+                    state, candidates[:3], clarification
+                )
         
-        # STEP 4: Web Search Tool - If we have company_name OR location, automatically searchrun 
+        # STEP 4: Web Search
         if company_name or location:
-            # Generate intelligent search queries using LLM
-            search_queries = self._generate_search_queries(company_name, location, user_prompt, context_text)
+            search_results = self._step_web_search(
+                company_name=company_name,
+                location=location,
+                user_prompt=user_prompt,
+                context=context_text,
+                conversation_id=conversation_id,
+                conversation_history=conversation_history
+            )
             
-            # Build prompt for tool calling with explicit query suggestions
-            target_verification_prompt = f"""You need to find the official website domain for a company/organization.
-
-Company name: {company_name or 'unknown'}
-Location: {location or 'unknown'}
-Previous conversation context: {context_text}
-Current user message: {user_prompt}
-
-Suggested search queries (use one of these or create similar):
-{chr(10).join(f'- {q}' for q in search_queries[:3])}
-
-Your task:
-1. Call the web_search tool with an appropriate query to find the official website domain
-2. The query should combine company name and location intelligently
-3. Use num_results=5 to get multiple search results
-4. The goal is to find the most relevant domain that matches the company name and location
-
-Target: Find the official website domain for this company/organization."""
-            
-            try:
-                # Create streaming callbacks
-                model_callback = None
-                tool_stream_callback = None
-                if self.stream_callback:
-                    def callback(chunk: str):
-                        self.stream_callback("model_response", "tool_calling_verify", chunk)
-                    model_callback = callback
-                    
-                    def tool_callback(tool_name: str, command: str, line: str):
-                        self.stream_callback("tool_execution", tool_name, line)
-                    tool_stream_callback = tool_callback
-                
-                # Call tool calling model with web_search tool only
-                tool_calling_agent = self.tool_calling_registry.get_model()  # Get default model
-                tool_calling_result = tool_calling_agent.call_with_tools(
-                    user_prompt=target_verification_prompt,
-                    tools=["web_search"],
-                    session_id=conversation_id,  # Use conversation_id
-                    conversation_history=conversation_history,
-                    stream_callback=model_callback,
-                    tool_stream_callback=tool_stream_callback
+            if search_results:
+                # STEP 5: Extract Structured Info
+                extracted_info = self._step_extract_info(
+                    search_results=search_results,
+                    company_name=company_name,
+                    location=location
                 )
                 
-                # Parse results from tool calling model
-                web_search_result = None  
-                tool_results = [] 
+                # STEP 6: Cross-check
+                validation = self._step_cross_check([extracted_info])
+                validated_info = validation.validated_info or extracted_info
                 
-                if tool_calling_result.get("success"):
-                    tool_results = tool_calling_result.get("tool_results", [])
-                    
-                    # Check if tool calling model called web_search tool
-                    if not tool_results:
-                        # Tool calling model didn't call any tool - fallback to asking user
-                        if self.stream_callback:
-                            self.stream_callback("model_response", "system", 
-                                "Note: Could not automatically search for domain. Please provide the domain name.")
-                    else:
-                        # Find web_search result
-                        for tr in tool_results:
-                            if tr.get("tool_name") == "web_search":
-                                if tr.get("result", {}).get("success"):
-                                    web_search_result = tr.get("result", {})
-                                    break
-                                else:
-                                    # Tool was called but failed
-                                    if self.stream_callback:
-                                        error_msg = tr.get("result", {}).get("error", "Unknown error")
-                                        self.stream_callback("model_response", "system", 
-                                            f"Note: Web search failed: {error_msg}")
+                # Verify domain is valid
+                if validated_info.is_valid() and validation.confidence > 0.3:
+                    return self._handle_validated_entity(
+                        state, validated_info, validation, clarification,
+                        conversation_id, context_text
+                    )
                 else:
-                    # Tool calling model call failed
-                    if self.stream_callback:
-                        error_msg = tool_calling_result.get("error", "Unknown error")
-                        self.stream_callback("model_response", "system", 
-                            f"Note: Automatic domain search failed: {error_msg}. Please provide the domain name.")
-                
-                if web_search_result and web_search_result.get("results"):
-                        search_results = web_search_result.get("results", [])
-                        
-                        # NEW: Extract structured information from search results
-                        extracted_info = self._extract_structured_info(
-                            search_results=search_results,
-                            company_name=company_name,
-                            location=location
-                        )
-                        
-                        # NEW: Cross-check extracted info (if we have multiple sources, we'd extract from each)
-                        # For now, we extract from all search results as one source
-                        validation_result = self._cross_check_entity([extracted_info])
-                        
-                        validated_info = validation_result.get("validated_info") or extracted_info
-                        validation_confidence = validation_result.get("confidence", extracted_info.get("confidence", 0.5))
-                        conflicts = validation_result.get("conflicts", [])
-                        
-                        found_domain = validated_info.get("domain", "")
-                        legal_name = validated_info.get("legal_name", "")
-                        country = validated_info.get("country", "")
-                        asn = validated_info.get("asn")
-                        ip_ranges = validated_info.get("ip_ranges", [])
-                        
-                        # Verify domain format is valid
-                        if found_domain:
-                            temp_normalizer = InputNormalizer(ai_model=self.qwen3)
-                            extracted_targets = temp_normalizer.extract_targets(found_domain, verify_domains=False)
-                            is_valid_domain = any(temp_normalizer._is_domain(t) for t in extracted_targets)
-                        else:
-                            is_valid_domain = False
-                        
-                        if is_valid_domain and validation_confidence > 0.3:
-                            # Save structured verified target to memory manager
-                            if conversation_id:
-                                self.memory_manager.save_verified_target(
-                                    session_id=conversation_id,
-                                    domain=found_domain,
-                                    conversation_id=conversation_id if state.get("conversation_id") else None,
-                                    structured_info={
-                                        "legal_name": legal_name,
-                                        "country": country,
-                                        "domain": found_domain,
-                                        "asn": asn,
-                                        "ip_ranges": ip_ranges,
-                                        "confidence": validation_confidence
-                                    }
-                                )
-                            
-                            # Update session context
-                            session_context = self.context_manager.get_context()
-                            if session_context:
-                                session_context = session_context.merge_with({"target_domain": found_domain})
-                                state["session_context"] = session_context.to_dict()
-                            
-                            # Found and verified domain! Update user prompt and continue
-                            original_prompt = state["user_prompt"]
-                            if context_text:
-                                updated_prompt = f"{context_text} {found_domain}"
-                            else:
-                                updated_prompt = f"{original_prompt} {found_domain}"
-                            state["user_prompt"] = updated_prompt
-                            
-                            # NEW: Enhanced confirmation message with structured info
-                            confirmation_message = f"Bạn đang nói tới:\n"
-                            if legal_name:
-                                confirmation_message += f"- Legal Name: {legal_name}\n"
-                            if country:
-                                confirmation_message += f"- Country: {country}\n"
-                            confirmation_message += f"- Domain: {found_domain}\n"
-                            if asn:
-                                confirmation_message += f"- ASN: {asn}\n"
-                            if ip_ranges:
-                                confirmation_message += f"- IP Ranges: {', '.join(ip_ranges)}\n"
-                            
-                            confirmation_message += f"\nConfidence: {int(validation_confidence * 10)}/10\n"
-                            
-                            if conflicts:
-                                confirmation_message += f"\nNote: Found some conflicts: {', '.join(conflicts)}\n"
-                            
-                            confirmation_message += "\nĐúng không?"
-                            
-                            state["final_answer"] = confirmation_message
-                            
-                            # Stream the found domain
-                            if self.stream_callback:
-                                self.stream_callback("state_update", "clarify_target", None)
-                                self.stream_callback("model_response", "system", confirmation_message)
-                            
-                            # Mark as not ambiguous anymore and continue
-                            clarification["is_ambiguous"] = False
-                            clarification["verified_domain"] = found_domain
-                            state["target_clarification"] = clarification
-                            
-                            return state
-                        else:
-                            # Domain found but not valid or score too low - fallback to asking user
-                            if self.stream_callback:
-                                self.stream_callback("model_response", "system", 
-                                    "Note: Could not find a valid domain from search results. Please provide the domain name.")
-            except Exception as e:
-                # Tool calling call failed, fall through to asking user
-                # Log error but continue with fallback
-                if self.stream_callback:
-                    self.stream_callback("model_response", "system", 
-                        f"Note: Automatic domain search failed: {str(e)}. Please provide the domain name.")
-                pass
+                    self._stream(
+                        "model_response", "system",
+                        ClarificationMessages.NO_VALID_DOMAIN
+                    )
         
-        # If search didn't work or we don't have enough context, only ask user if we have NO information
-        # If we have company_name or location, we should have already tried to search
+        # STEP 7: Ask User (no valid info found)
         if not company_name and not location:
-            # No information at all - ask user
-            main_target = potential_targets[0] if potential_targets else "the target"
-            
-            clarification_message = (
-                f"I need more information to identify {main_target}.\n\n"
+            message = self._step_ask_user(
+                candidates=[],
+                potential_targets=potential_targets,
+                suggested_questions=suggested_questions
             )
-            
-            if suggested_questions:
-                clarification_message += f"Please provide one of the following:\n"
-                for i, question in enumerate(suggested_questions[:3], 1):  
-                    clarification_message += f"{i}. {question}\n"
-                clarification_message += "\n"
-            
-            clarification_message += (
-                f"Alternatively, you can provide:\n"
-                f"- The domain name (e.g., example.com)\n"
-                f"- The IP address (e.g., 192.168.1.1)\n"
-                f"- The website URL (e.g., https://example.com)\n"
-                f"- Additional context like company location or industry"
-            )
-            
-            # Set final answer to clarification message
-            state["final_answer"] = clarification_message
-            
-            # Stream the clarification
-            if self.stream_callback:
-                self.stream_callback("state_update", "clarify_target", None)
-                self.stream_callback("model_response", "system", clarification_message)
+            state["final_answer"] = message
+            self._stream("state_update", "clarify_target", None)
+            self._stream("model_response", "system", message)
         else:
-            # We have some information but search failed - inform user
-            if self.stream_callback:
-                self.stream_callback("model_response", "system", 
-                    f"Đang tìm kiếm thông tin về {company_name or 'target'}... Vui lòng cung cấp thêm thông tin nếu có.")
+            self._stream(
+                "model_response", "system",
+                ClarificationMessages.SEARCHING.format(
+                    target=company_name or "target"
+                )
+            )
+        
+        return state
+    
+    # =========================================================================
+    # Helper Methods for Main Pipeline
+    # =========================================================================
+    
+    def _build_context_text(
+        self, 
+        conversation_history: List[Dict[str, Any]]
+    ) -> str:
+        """Build context text from conversation history."""
+        if not conversation_history:
+            return ""
+        
+        recent = conversation_history[-3:] if len(conversation_history) > 3 else conversation_history
+        return " ".join([
+            msg.get("content", "") 
+            for msg in recent 
+            if isinstance(msg, dict)
+        ])
+    
+    def _handle_verified_target(
+        self, 
+        state: Dict[str, Any], 
+        verified_target: str
+    ) -> Dict[str, Any]:
+        """Handle case where target is already verified."""
+        clarification = state.get("target_clarification", {})
+        clarification["is_ambiguous"] = False
+        clarification["verified_domain"] = verified_target
+        state["target_clarification"] = clarification
+        
+        session_context = self.context_manager.get_context()
+        if session_context:
+            session_context = session_context.merge_with({"target_domain": verified_target})
+            state["session_context"] = session_context.to_dict()
+        
+        state["user_prompt"] = f"{state['user_prompt']} {verified_target}"
+        return state
+    
+    def _handle_high_confidence_candidate(
+        self,
+        state: Dict[str, Any],
+        candidate: EntityCandidate,
+        clarification: Dict[str, Any],
+        conversation_id: Optional[str]
+    ) -> Dict[str, Any]:
+        """Handle high-confidence candidate from database."""
+        if conversation_id:
+            self.memory_manager.save_verified_target(
+                session_id=conversation_id,
+                domain=candidate.domain,
+                conversation_id=conversation_id if state.get("conversation_id") else None
+            )
+        
+        clarification["is_ambiguous"] = False
+        clarification["verified_domain"] = candidate.domain
+        state["target_clarification"] = clarification
+        state["user_prompt"] = f"{state['user_prompt']} {candidate.domain}"
+        
+        self._stream(
+            "model_response", "system",
+            ClarificationMessages.FOUND_FROM_DB.format(domain=candidate.domain)
+        )
+        
+        return state
+    
+    def _handle_multiple_candidates(
+        self,
+        state: Dict[str, Any],
+        candidates: List[EntityCandidate],
+        clarification: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle multiple candidates requiring user selection."""
+        message = self._step_ask_user(candidates=candidates)
+        state["final_answer"] = message
+        state["target_clarification"] = clarification
+        
+        self._stream("state_update", "clarify_target", None)
+        self._stream("model_response", "system", message)
+        
+        return state
+    
+    def _handle_validated_entity(
+        self,
+        state: Dict[str, Any],
+        entity_info: EntityInfo,
+        validation: ValidationResult,
+        clarification: Dict[str, Any],
+        conversation_id: Optional[str],
+        context_text: str
+    ) -> Dict[str, Any]:
+        """Handle validated entity from web search."""
+        # Save to memory
+        if conversation_id:
+            self.memory_manager.save_verified_target(
+                session_id=conversation_id,
+                domain=entity_info.domain,
+                conversation_id=conversation_id if state.get("conversation_id") else None,
+                structured_info=entity_info.to_dict()
+            )
+        
+        # Update session context
+        session_context = self.context_manager.get_context()
+        if session_context:
+            session_context = session_context.merge_with({
+                "target_domain": entity_info.domain
+            })
+            state["session_context"] = session_context.to_dict()
+        
+        # Update user prompt
+        original_prompt = state["user_prompt"]
+        if context_text:
+            state["user_prompt"] = f"{context_text} {entity_info.domain}"
+        else:
+            state["user_prompt"] = f"{original_prompt} {entity_info.domain}"
+        
+        # Format confirmation message
+        message = self._step_ask_user(
+            candidates=[],
+            entity_info=entity_info,
+            validation=validation
+        )
+        state["final_answer"] = message
+        
+        self._stream("state_update", "clarify_target", None)
+        self._stream("model_response", "system", message)
+        
+        # Mark as resolved
+        clarification["is_ambiguous"] = False
+        clarification["verified_domain"] = entity_info.domain
+        state["target_clarification"] = clarification
         
         return state

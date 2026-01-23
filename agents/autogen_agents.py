@@ -38,7 +38,7 @@ class AutoGenAgent:
             # DeepSeekAgent removed - using GenericOllamaAgent instead
             self.model_agent = GenericOllamaAgent(
                 model_name=resolved_model,
-                prompt_template="deepseek_system.jinja2"
+                prompt_template="roles/analyzer.jinja2"
             )
         elif resolved_model == "json_tool_calling" or self.model_name == "functiongemma":
             # Tool calling registry (legacy functiongemma support)
@@ -48,7 +48,7 @@ class AutoGenAgent:
             # Use GenericOllamaAgent for any Ollama model (flexible)
             self.model_agent = GenericOllamaAgent(
                 model_name=resolved_model,
-                prompt_template="qwen3_system.jinja2"
+                prompt_template="roles/planner.jinja2"
             )
         
         # Load prompt template

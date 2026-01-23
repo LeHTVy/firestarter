@@ -15,13 +15,13 @@ class GenericOllamaAgent:
     
     def __init__(self, 
                  model_name: str,
-                 prompt_template: str = "qwen3_system.jinja2",
+                 prompt_template: str = "roles/planner.jinja2",
                  config_path: Optional[Path] = None):
         """Initialize generic Ollama agent.
         
         Args:
             model_name: Ollama model name (e.g., "llama3.1:8b", "mistral:7b")
-            prompt_template: Prompt template file name (default: qwen3_system.jinja2)
+            prompt_template: Prompt template file name (default: roles/planner.jinja2)
             config_path: Optional path to config file
         """
         self.model_name = model_name
@@ -45,7 +45,8 @@ class GenericOllamaAgent:
         try:
             self.system_prompt_template = self.env.get_template(prompt_template)
         except:
-            self.system_prompt_template = self.env.get_template("qwen3_system.jinja2")
+            # Fallback to planner role-based prompt
+            self.system_prompt_template = self.env.get_template("roles/planner.jinja2")
     
     def _load_default_config(self) -> Dict[str, Any]:
         """Load default config."""

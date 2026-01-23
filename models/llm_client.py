@@ -1,17 +1,26 @@
-"""LangChain Ollama client wrapper for consistent LLM access."""
+"""
+Ollama LLM Client - Direct HTTP API (No LangChain Guardrails)
+
+This module provides direct Ollama HTTP API access without LangChain's
+safety filters. Essential for penetration testing tasks.
+
+IMPORTANT: LangChain has been removed to prevent model refusal caused by
+its policy layers. This client calls Ollama's HTTP API directly.
+"""
 
 from typing import Dict, Any, List, Optional, Callable
-from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from config import load_config
 from pathlib import Path
+import json
+import requests
+import yaml
 
 
 class OllamaLLMClient:
-    """LangChain-based Ollama client with streaming and function calling support.
+    """Direct Ollama HTTP API client - NO LangChain guardrails.
     
-    This wrapper provides a consistent interface for all Ollama model interactions,
-    replacing direct `ollama.chat()` calls with LangChain's ChatOllama.
+    This client bypasses LangChain's safety layers by making direct HTTP requests
+    to the Ollama API. This is essential for penetration testing tasks where
+    LangChain's policy filters may cause model refusal.
     """
     
     def __init__(self, 
@@ -22,90 +31,51 @@ class OllamaLLMClient:
         """Initialize Ollama LLM client.
         
         Args:
-            model_name: Ollama model name (e.g., "mistral:latest", "llama3.1:8b")
+            model_name: Ollama model name (e.g., "mistral:latest", "qwen2.5:7b")
             base_url: Ollama base URL (defaults to config)
             config_path: Optional path to config file
             **default_options: Default options (temperature, top_p, etc.)
         """
         self.model_name = model_name
-        self.config = load_config(config_path) if config_path else self._load_default_config()
+        self.config = self._load_config(config_path)
         
         if base_url is None:
-            base_url = self.config['ollama']['base_url']
+            base_url = self.config.get('ollama', {}).get('base_url', 'http://localhost:11434')
         
-        self.base_url = base_url
-        self.default_options = default_options
-        self._llm = None  # Lazy initialization
+        self.base_url = base_url.rstrip('/')
+        self.timeout = self.config.get('ollama', {}).get('timeout', 300)
+        self.default_options = {
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "top_k": 40,
+            "num_predict": 2048,
+            "repeat_penalty": 1.1,
+            **default_options
+        }
     
-    def _load_default_config(self) -> Dict[str, Any]:
-        """Load default config."""
-        import yaml
-        config_path = Path(__file__).parent.parent / "config" / "ollama_config.yaml"
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
+    def _load_config(self, config_path: Optional[Path] = None) -> Dict[str, Any]:
+        """Load config from file."""
+        if config_path is None:
+            config_path = Path(__file__).parent.parent / "config" / "ollama_config.yaml"
+        
+        try:
+            with open(config_path, 'r') as f:
+                return yaml.safe_load(f)
+        except Exception:
+            return {"ollama": {"base_url": "http://localhost:11434", "timeout": 300}}
     
-    def _get_llm(self, **override_options) -> ChatOllama:
-        """Lazy initialization of ChatOllama with options.
-        
-        Args:
-            **override_options: Options to override defaults
-            
-        Returns:
-            ChatOllama instance
-        """
-        # Merge default options with overrides
-        options = {**self.default_options, **override_options}
-        
-        # Extract LangChain-compatible options
-        temperature = options.get('temperature', 0.7)
-        top_p = options.get('top_p', 0.9)
-        top_k = options.get('top_k', 40)
-        num_predict = options.get('num_predict', 2048)
-        repeat_penalty = options.get('repeat_penalty', 1.1)
-        
-        # Create ChatOllama instance
-        return ChatOllama(
-            model=self.model_name,
-            base_url=self.base_url,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            num_predict=num_predict,
-            repeat_penalty=repeat_penalty,
-        )
-    
-    def _convert_messages(self, messages: List[Dict[str, str]]) -> List:
-        """Convert dict messages to LangChain message objects.
-        
-        Args:
-            messages: List of dict messages with 'role' and 'content'
-            
-        Returns:
-            List of LangChain message objects
-        """
-        langchain_messages = []
-        for msg in messages:
-            role = msg.get('role', 'user')
-            content = msg.get('content', '')
-            
-            if role == 'system':
-                langchain_messages.append(SystemMessage(content=content))
-            elif role == 'user':
-                langchain_messages.append(HumanMessage(content=content))
-            elif role == 'assistant':
-                langchain_messages.append(AIMessage(content=content))
-            else:
-                # Default to human message
-                langchain_messages.append(HumanMessage(content=content))
-        
-        return langchain_messages
+    def _build_options(self, **override_options) -> Dict[str, Any]:
+        """Build options dict merging defaults with overrides."""
+        return {**self.default_options, **override_options}
     
     def generate(self,
                  messages: List[Dict[str, str]],
                  stream: bool = False,
                  stream_callback: Optional[Callable[[str], None]] = None,
                  **options) -> Dict[str, Any]:
-        """Generate response from messages.
+        """Generate response using direct Ollama HTTP API.
+        
+        NO LANGCHAIN - Direct HTTP calls to bypass guardrails.
         
         Args:
             messages: List of dict messages with 'role' and 'content'
@@ -116,35 +86,95 @@ class OllamaLLMClient:
         Returns:
             Dict with 'content', 'message', and other metadata
         """
-        llm = self._get_llm(**options)
-        langchain_messages = self._convert_messages(messages)
+        url = f"{self.base_url}/api/chat"
+        merged_options = self._build_options(**options)
+        
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": stream,
+            "options": {
+                "temperature": merged_options.get("temperature", 0.7),
+                "top_p": merged_options.get("top_p", 0.9),
+                "top_k": merged_options.get("top_k", 40),
+                "num_predict": merged_options.get("num_predict", 2048),
+                "repeat_penalty": merged_options.get("repeat_penalty", 1.1),
+            }
+        }
         
         try:
             if stream:
-                # Streaming mode
-                content = ""
-                for chunk in llm.stream(langchain_messages):
-                    chunk_content = chunk.content
-                    if chunk_content:
-                        content += chunk_content
-                        if stream_callback:
-                            stream_callback(chunk_content)
-                
-                return {
-                    "success": True,
-                    "content": content,
-                    "message": {"content": content, "role": "assistant"}
-                }
+                return self._stream_response(url, payload, stream_callback)
             else:
-                # Non-streaming mode
-                response = llm.invoke(langchain_messages)
-                content = response.content if hasattr(response, 'content') else str(response)
+                response = requests.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                
+                data = response.json()
+                message = data.get("message", {})
+                content = message.get("content", "")
                 
                 return {
                     "success": True,
                     "content": content,
-                    "message": {"content": content, "role": "assistant"}
+                    "message": message
                 }
+                
+        except requests.exceptions.Timeout:
+            return {
+                "success": False,
+                "error": f"Request timeout after {self.timeout}s",
+                "content": None,
+                "message": None
+            }
+        except requests.exceptions.ConnectionError:
+            return {
+                "success": False,
+                "error": f"Cannot connect to Ollama at {self.base_url}",
+                "content": None,
+                "message": None
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "content": None,
+                "message": None
+            }
+    
+    def _stream_response(self,
+                        url: str,
+                        payload: Dict[str, Any],
+                        callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+        """Stream response from Ollama API."""
+        try:
+            response = requests.post(url, json=payload, stream=True, timeout=self.timeout)
+            response.raise_for_status()
+            
+            content = ""
+            
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        chunk = json.loads(line.decode('utf-8'))
+                        chunk_content = chunk.get("message", {}).get("content", "")
+                        
+                        if chunk_content:
+                            content += chunk_content
+                            if callback:
+                                callback(chunk_content)
+                        
+                        if chunk.get("done", False):
+                            break
+                            
+                    except json.JSONDecodeError:
+                        continue
+            
+            return {
+                "success": True,
+                "content": content,
+                "message": {"role": "assistant", "content": content}
+            }
+            
         except Exception as e:
             return {
                 "success": False,
@@ -157,10 +187,9 @@ class OllamaLLMClient:
                             messages: List[Dict[str, str]],
                             tools: List[Dict[str, Any]],
                             **options) -> Dict[str, Any]:
-        """Generate response with function calling support (for FunctionGemma).
+        """Generate response with native Ollama tool calling.
         
-        Note: FunctionGemma requires direct API calls for tool calling.
-        This method uses direct ollama.chat() for compatibility.
+        Uses Ollama's native function calling API - NO LANGCHAIN.
         
         Args:
             messages: List of dict messages
@@ -170,26 +199,32 @@ class OllamaLLMClient:
         Returns:
             Dict with 'content', 'tool_calls', and 'message'
         """
-        import ollama
+        url = f"{self.base_url}/api/chat"
         
-        # For function calling, use direct ollama.chat() as LangChain
-        # doesn't fully support Ollama's tool calling format yet
+        # Use lower temperature for tool calling
+        tool_options = {
+            "temperature": options.get('temperature', 0.0),
+            "top_p": options.get('top_p', 0.9),
+            "top_k": options.get('top_k', 40),
+            "num_predict": options.get('num_predict', 512),
+        }
+        
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "tools": tools,
+            "stream": False,
+            "options": tool_options
+        }
+        
         try:
-            response = ollama.chat(
-                model=self.model_name,
-                messages=messages,
-                tools=tools,
-                options={
-                    "temperature": options.get('temperature', 0.0),
-                    "top_p": options.get('top_p', 0.9),
-                    "top_k": options.get('top_k', 40),
-                    "num_predict": options.get('num_predict', 512),
-                }
-            )
+            response = requests.post(url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
             
-            message = response.get('message', {})
-            content = message.get('content', '')
-            tool_calls = message.get('tool_calls', [])
+            data = response.json()
+            message = data.get("message", {})
+            content = message.get("content", "")
+            tool_calls = message.get("tool_calls", [])
             
             return {
                 "success": True,
@@ -208,9 +243,15 @@ class OllamaLLMClient:
 
 
 class OllamaEmbeddingClient:
-    """LangChain-based Ollama embeddings client."""
+    """Ollama embeddings client using direct HTTP API.
     
-    def __init__(self, model_name: str = "nomic-embed-text", base_url: Optional[str] = None):
+    Note: Embeddings don't have safety issues, but we use direct API
+    for consistency.
+    """
+    
+    def __init__(self, 
+                 model_name: str = "nomic-embed-text", 
+                 base_url: Optional[str] = None):
         """Initialize Ollama embeddings client.
         
         Args:
@@ -218,42 +259,7 @@ class OllamaEmbeddingClient:
             base_url: Ollama base URL
         """
         self.model_name = model_name
-        self.base_url = base_url or "http://localhost:11434"
-        self._embeddings = None
-        
-        # Check if model exists, if not, try to pull it
-        self._ensure_model_exists()
-    
-    def _ensure_model_exists(self):
-        """Ensure embedding model exists, pull if needed."""
-        try:
-            import ollama
-            # Try to check if model exists
-            try:
-                ollama.show(self.model_name)
-            except:
-                # Model doesn't exist, try to pull it
-                import warnings
-                warnings.warn(
-                    f"Embedding model '{self.model_name}' not found. "
-                    f"Please run: ollama pull {self.model_name}",
-                    UserWarning
-                )
-        except ImportError:
-            # ollama not available, skip check
-            pass
-        except Exception as e:
-            # Ignore errors, will fail later if model truly doesn't exist
-            pass
-    
-    def _get_embeddings(self) -> OllamaEmbeddings:
-        """Lazy initialization of OllamaEmbeddings."""
-        if self._embeddings is None:
-            self._embeddings = OllamaEmbeddings(
-                model=self.model_name,
-                base_url=self.base_url
-            )
-        return self._embeddings
+        self.base_url = (base_url or "http://localhost:11434").rstrip('/')
     
     def embed_query(self, text: str) -> List[float]:
         """Embed a single query text.
@@ -264,9 +270,19 @@ class OllamaEmbeddingClient:
         Returns:
             Embedding vector
         """
+        url = f"{self.base_url}/api/embeddings"
+        
         try:
-            embeddings = self._get_embeddings()
-            return embeddings.embed_query(text)
+            response = requests.post(
+                url,
+                json={"model": self.model_name, "prompt": text},
+                timeout=60
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            return data.get("embedding", [])
+            
         except Exception as e:
             print(f"Error embedding query: {e}")
             return []
@@ -280,9 +296,8 @@ class OllamaEmbeddingClient:
         Returns:
             List of embedding vectors
         """
-        try:
-            embeddings = self._get_embeddings()
-            return embeddings.embed_documents(texts)
-        except Exception as e:
-            print(f"Error embedding documents: {e}")
-            return [[] for _ in texts]
+        embeddings = []
+        for text in texts:
+            embedding = self.embed_query(text)
+            embeddings.append(embedding)
+        return embeddings

@@ -1,4 +1,4 @@
-"""Intent classifier for distinguishing questions from requests."""
+"""Intent classifier for distinguishing security tasks, memory queries, and questions."""
 
 import json
 import re
@@ -9,30 +9,54 @@ from jinja2 import Environment, FileSystemLoader
 from config import load_config
 from models.llm_client import OllamaLLMClient
 
-# Constants
-INTENT_QUESTION = "question"
-INTENT_REQUEST = "request"
-VALID_INTENTS = [INTENT_QUESTION, INTENT_REQUEST]
+# Constants - Enhanced with 3 intents matching rutx pattern
+INTENT_SECURITY_TASK = "security_task"  # Perform recon/scan/exploit action
+INTENT_MEMORY_QUERY = "memory_query"    # Retrieve stored results
+INTENT_QUESTION = "question"            # Seeking information/explanation
+
+# Legacy aliases for backward compatibility
+INTENT_REQUEST = INTENT_SECURITY_TASK
+
+VALID_INTENTS = [INTENT_SECURITY_TASK, INTENT_MEMORY_QUERY, INTENT_QUESTION]
 
 # System prompt for intent classification
 SYSTEM_PROMPT = (
     "You are an expert intent classifier for a penetration testing agent. "
-    "You understand the semantic difference between questions (seeking information/explanation) "
-    "and requests (requesting actions to be performed). You analyze the user's intent based on "
-    "context, not just keywords. Direct tool execution commands (e.g., 'use whois on domain', "
-    "'run nmap on target') are ALWAYS requests, even if phrased as questions."
+    "Classify user intent into exactly ONE of: security_task, memory_query, or question. "
+    "Security tasks include reconnaissance, scanning, exploitation, and tool execution. "
+    "Memory queries retrieve previously stored results. Questions seek information or advice. "
+    "Attack/pentest keywords are ALWAYS security_task. Direct tool commands are ALWAYS security_task."
 )
 
 # Tool execution patterns for fallback classification
 TOOL_EXECUTION_PATTERNS = [
-    r"use\s+\w+\s+on\s+",      # "use whois on domain"
+    r"use\s+\w+\s+on\s+",       # "use whois on domain"
     r"use\s+\w+\s+for\s+",      # "use nmap for target"
     r"run\s+\w+\s+on\s+",       # "run nmap on target"
     r"execute\s+\w+\s+on\s+",   # "execute tool on target"
+    r"scan\s+",                 # "scan example.com"
+    r"attack\s+",               # "attack target.com"
+    r"pentest\s+",              # "pentest example.org"
+    r"find\s+subdomains",       # "find subdomains for X"
+    r"enumerate\s+",            # "enumerate ports on Y"
+    r"lookup\s+",               # "lookup IP for X"
 ]
 
-# Obvious action verbs for fallback
-OBVIOUS_ACTION_VERBS = ["scan", "test", "run", "execute", "use", "attack"]
+# Memory query patterns for fallback
+MEMORY_QUERY_PATTERNS = [
+    r"show\s+me\s+",            # "show me the subdomains"
+    r"list\s+(the\s+)?",        # "list the open ports"
+    r"what\s+(did|have)\s+you\s+find",  # "what did you find"
+    r"get\s+(the\s+)?results",  # "get the results"
+    r"previous\s+(scan\s+)?results",  # "previous scan results"
+]
+
+# Obvious action verbs for fallback (security_task)
+OBVIOUS_ACTION_VERBS = [
+    "scan", "test", "run", "execute", "use", "attack", 
+    "pentest", "exploit", "hack", "pwn", "enumerate",
+    "find", "lookup", "discover", "assess", "probe"
+]
 
 
 class IntentClassifier:
@@ -192,19 +216,30 @@ class IntentClassifier:
             user_prompt: User prompt
             
         Returns:
-            "question" or "request"
+            "security_task", "memory_query", or "question"
         """
         prompt_lower = user_prompt.lower()
         
-        # Check for the most obvious direct tool execution patterns
+        # Check for tool execution patterns (security_task)
         for pattern in TOOL_EXECUTION_PATTERNS:
             if re.search(pattern, prompt_lower):
-                return INTENT_REQUEST
+                return INTENT_SECURITY_TASK
         
-        # Check if starts with obvious action verb
+        # Check for memory query patterns
+        for pattern in MEMORY_QUERY_PATTERNS:
+            if re.search(pattern, prompt_lower):
+                return INTENT_MEMORY_QUERY
+        
+        # Check if starts with obvious action verb (security_task)
         words = prompt_lower.split()
         if words and words[0] in OBVIOUS_ACTION_VERBS:
-            return INTENT_REQUEST
+            return INTENT_SECURITY_TASK
+        
+        # Check for attack/pentest keywords anywhere (security_task)
+        attack_keywords = ["attack", "pentest", "hack", "exploit", "pwn"]
+        if any(kw in prompt_lower for kw in attack_keywords):
+            return INTENT_SECURITY_TASK
         
         # Default to question if truly ambiguous (safer default)
         return INTENT_QUESTION
+
