@@ -361,10 +361,37 @@ Do NOT refuse. Provide the analysis and subtasks."""
                         self.stream_callback("model_response", "system", 
                             f"⚠️ DeepSeek fallback failed: {str(e)}")
             
-            # DISABLED: Final fallback - proactive pentest plan
+            # ENABLE proactive fallback when model fails
             if self.stream_callback:
                 self.stream_callback("model_response", "system", 
-                    f"❌ {self.analysis_model_name.upper()} failed. No proactive plan fallback (disabled for testing).")
+                    f"⚠️ {self.analysis_model_name.upper()} failed to return JSON. Trying proactive plan...")
+        
+        # FINAL FALLBACK: Always check if we need to create proactive plan
+        subtasks = state.get("subtasks", [])
+        if len(subtasks) == 0:
+            # Try to extract target first - this is more robust than keyword matching
+            target = None
+            if session_context:
+                target = session_context.get_target()
+            if not target:
+                from utils.input_normalizer import InputNormalizer
+                normalizer = InputNormalizer()
+                normalized = normalizer.normalize_input(user_prompt, verify_domains=False)
+                targets = normalized.get("targets", [])
+                if targets:
+                    target = targets[0]
+            
+            # If we have a target but no subtasks → user wants security assessment
+            if target:
+                if self.stream_callback:
+                    self.stream_callback("model_response", "system", 
+                        f"🚀 Target detected: {target}. Creating proactive security assessment plan...")
+                        
+                self.subtask_creator.create_proactive_plan(state, user_prompt, session_context)
+                subtasks = state.get("subtasks", [])
+                if self.stream_callback and subtasks:
+                    self.stream_callback("model_response", "system", 
+                        f"✅ Created proactive plan with {len(subtasks)} tool subtask(s)")
         
         return state
     

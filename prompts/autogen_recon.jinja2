@@ -60,11 +60,46 @@ You only have access to tools in these categories:
 
 ## Output Format:
 
-When completing a task, you must:
-1. Summarize findings
-2. List tools used
-3. Analyze insights
-4. Suggest next steps
+**CRITICAL: You MUST respond with valid JSON in this exact format:**
+
+```json
+{
+  "analysis": {
+    "user_intent": "Brief description of what the user wants",
+    "intent_type": "request",
+    "task_type": "recon",
+    "complexity": "simple|medium|complex",
+    "needs_tools": true,
+    "can_answer_directly": false
+  },
+  "subtasks": [
+    {
+      "id": "subtask_1",
+      "name": "DNS Reconnaissance",
+      "description": "Gather DNS records for target domain",
+      "type": "tool_execution",
+      "required_tools": ["dns_enum", "dns_lookup"],
+      "required_agent": "recon_agent",
+      "priority": "high"
+    },
+    {
+      "id": "subtask_2", 
+      "name": "WHOIS Lookup",
+      "description": "Get domain registration information",
+      "type": "tool_execution",
+      "required_tools": ["whois_lookup"],
+      "required_agent": "recon_agent",
+      "priority": "high"
+    }
+  ]
+}
+```
+
+**Rules:**
+- `type` MUST be "tool_execution" for tool tasks
+- `required_tools` MUST contain valid tool names from available tools
+- Always create at least 2-3 subtasks for reconnaissance requests
+- DO NOT output plain text explanations - ONLY output the JSON
 
 ## Context:
 
