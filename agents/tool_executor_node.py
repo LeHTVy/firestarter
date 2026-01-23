@@ -148,9 +148,65 @@ class ToolExecutorNode:
             validated_tools = []
             
             for tool_name in tool_names:
-                tool = tool_registry.get_tool(tool_name)
-                if not tool:
+                original_name = tool_name
+                resolved_tool = None
+                
+                # 1. Try exact match first
+                resolved_tool = tool_registry.get_tool(tool_name)
+                
+                # 2. Try case-insensitive match
+                if not resolved_tool:
+                    for t in tool_registry.list_tools():
+                        if t.name.lower() == tool_name.lower():
+                            resolved_tool = t
+                            tool_name = t.name
+                            break
+                
+                # 3. Try fuzzy matching - find tools containing the name
+                if not resolved_tool:
+                    for t in tool_registry.list_tools():
+                        # Check if tool_name is part of actual tool name
+                        if tool_name.lower() in t.name.lower():
+                            resolved_tool = t
+                            tool_name = t.name
+                            if self.stream_callback:
+                                self.stream_callback("model_response", "system",
+                                    f"📝 Fuzzy match: '{original_name}' → '{tool_name}'")
+                            break
+                        # Check if actual tool name is part of tool_name
+                        if t.name.lower() in tool_name.lower():
+                            resolved_tool = t
+                            tool_name = t.name
+                            if self.stream_callback:
+                                self.stream_callback("model_response", "system",
+                                    f"📝 Fuzzy match: '{original_name}' → '{tool_name}'")
+                            break
+                
+                # 4. Try capability-based matching (e.g., "subdomain" → subdomain_discovery)
+                if not resolved_tool:
+                    search_terms = tool_name.lower().replace("_", " ").replace("-", " ").split()
+                    for t in tool_registry.list_tools():
+                        # Check in name, description, or capabilities
+                        tool_text = f"{t.name} {t.description}".lower()
+                        if hasattr(t, 'capability') and t.capability:
+                            tool_text += " " + " ".join(t.capability)
+                        
+                        # Check if any search term matches
+                        if any(term in tool_text for term in search_terms):
+                            resolved_tool = t
+                            tool_name = t.name
+                            if self.stream_callback:
+                                self.stream_callback("model_response", "system",
+                                    f"📝 Capability match: '{original_name}' → '{tool_name}'")
+                            break
+                
+                if not resolved_tool:
+                    if self.stream_callback:
+                        self.stream_callback("model_response", "system",
+                            f"⚠️ Tool '{original_name}' not found in registry (150+ tools available)")
                     continue
+                
+                tool = resolved_tool
                 
                 # Mode compatibility check only
                 if self.mode_manager and tool.mode:
