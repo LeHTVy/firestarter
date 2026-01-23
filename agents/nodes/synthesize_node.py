@@ -33,16 +33,25 @@ class SynthesizeNode:
         # Analyze tool results if available
         tool_results = state.get("tool_results", [])
         if tool_results:
-            # Use result analyzer to get insights
-            analysis = self.tool_executor_node.result_analyzer.analyze_results(tool_results)
+            # Simple inline analysis (result_analyzer was removed)
+            tool_count = len(tool_results)
+            successful_count = sum(1 for r in tool_results if r.get("success", False))
+            tool_names = [r.get("tool_name", "unknown") for r in tool_results]
+            
+            analysis = {
+                "summary": f"Executed {tool_count} tool(s): {', '.join(tool_names)}",
+                "successful_count": successful_count,
+                "failed_count": tool_count - successful_count,
+                "tools_used": tool_names
+            }
             
             # Add analysis to state for synthesis
             state["result_analysis"] = analysis
             
-            # Stream insights if available
-            if self.stream_callback and analysis.get("ai_insights"):
+            # Stream analysis summary if available
+            if self.stream_callback:
                 self.stream_callback("model_response", "result_analyzer", 
-                    f"📊 Analysis: {analysis.get('summary', '')}\n\n{analysis.get('ai_insights', '')}")
+                    f"📊 Analysis: {analysis.get('summary', '')}")
         
         # Check if we already have a direct answer
         direct_answer = state.get("direct_answer")

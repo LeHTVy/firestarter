@@ -48,8 +48,9 @@ class ToolExecutorNode:
         
         Strategy:
         1. Validate tools against policy
-        2. Try tool calling model for semantic selection
-        3. Fallback to direct execution if model doesn't call tools
+        2. Check autonomy level for each tool
+        3. Try tool calling model for semantic selection
+        4. Fallback to direct execution if model doesn't call tools
         
         Args:
             state: Graph state with subtasks
@@ -69,12 +70,57 @@ class ToolExecutorNode:
             subtasks = self._validate_subtasks(subtasks, target, conversation_id, execution_mode)
             state["subtasks"] = subtasks
         
-        # Execute tools
-        tool_results = self._execute_subtasks(state, subtasks, target)
+        # Check autonomy level for tools
+        from agents.autonomy_controller import get_autonomy_controller
+        autonomy_controller = get_autonomy_controller()
+        
+        gated_tools = []
+        approved_subtasks = []
+        
+        for subtask in subtasks:
+            if subtask.get("type") != "tool_execution":
+                approved_subtasks.append(subtask)
+                continue
+            
+            tool_names = subtask.get("required_tools", [])
+            approved_tools = []
+            
+            for tool_name in tool_names:
+                can_execute, message = autonomy_controller.gate(
+                    tool_name, 
+                    context={"target": target},
+                    conversation_id=conversation_id
+                )
+                
+                if can_execute:
+                    approved_tools.append(tool_name)
+                else:
+                    gated_tools.append((tool_name, message))
+                    if self.stream_callback:
+                        self.stream_callback("model_response", "autonomy", message)
+            
+            if approved_tools:
+                subtask_copy = subtask.copy()
+                subtask_copy["required_tools"] = approved_tools
+                approved_subtasks.append(subtask_copy)
+        
+        # If all tools were gated, return with message
+        if gated_tools and not any(s.get("type") == "tool_execution" for s in approved_subtasks):
+            state["tool_results"] = []
+            state["autonomy_blocked"] = True
+            state["gated_tools"] = [t[0] for t in gated_tools]
+            if self.stream_callback:
+                self.stream_callback("model_response", "autonomy", 
+                    f"\n⚠️ All requested tools require higher autonomy level. "
+                    f"Use /autonomy <level> to change level or approve actions manually.")
+            return state
+        
+        # Execute approved tools
+        tool_results = self._execute_subtasks(state, approved_subtasks, target)
         state["tool_results"] = tool_results
         
         # Analyze results for multi-turn
-        self._analyze_results(state, tool_results, subtasks)
+        self._analyze_results(state, tool_results, approved_subtasks)
         
         return state
     

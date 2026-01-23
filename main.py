@@ -17,10 +17,8 @@ from utils.input_normalizer import InputNormalizer
 from websearch.aggregator import SearchAggregator
 from api.conversation_api import ConversationAPI
 
-# Fix encoding for terminal input/output
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
-# Fix stdin encoding if needed
 if hasattr(sys.stdin, 'buffer'):
     try:
         if sys.stdin.encoding != 'utf-8':
@@ -47,10 +45,8 @@ def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
     try:
         return Prompt.ask(prompt_text, default=default)
     except KeyboardInterrupt:
-        # Re-raise KeyboardInterrupt to allow graceful exit handling
         raise
     except (UnicodeDecodeError, UnicodeError) as e:
-        # Fallback to standard input with encoding fix
         try:
             if hasattr(sys.stdin, 'buffer'):
                 sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
@@ -147,12 +143,12 @@ def main():
                 # State update
                 streaming_manager.update_progress(f"Node: {event_name}")
         except Exception as e:
-            # Silently handle streaming errors to not break main flow
+
             pass
     
     # Multi-Agent Model Selection - Auto-detect available Ollama models
-    agent_model_config = {}  # Will store agent -> model mapping
-    selected_model = "mistral:latest"  # Default fallback
+    agent_model_config = {} 
+    selected_model = "mistral:latest"  
     
     try:
         from utils.ollama_helper import get_model_names, check_model_exists
@@ -166,7 +162,7 @@ def main():
         if not available_models:
             console.print("[yellow]⚠️  No models found in Ollama. Please install at least one model.[/yellow]")
             console.print("[dim]Example: ollama pull mistral:latest[/dim]\n")
-            selected_model = "mistral:latest"  # Fallback
+            selected_model = "mistral:latest"  
             agent_model_config = {
                 "recon_agent": selected_model,
                 "exploit_agent": selected_model,
@@ -233,7 +229,6 @@ def main():
         }
     
     # Tool calling model selection
-    # Initialize default value first to avoid UnboundLocalError
     tool_calling_model_name = "json_tool_calling"
     
     try:
@@ -263,6 +258,42 @@ def main():
     except Exception as e:
         console.print(f"[yellow]⚠️  Tool calling model selection failed: {e}. Using default.[/yellow]\n")
         tool_calling_model_name = "json_tool_calling"
+    
+    # Autonomy Level Selection
+    from agents.autonomy_controller import get_autonomy_controller, AutonomyLevel, LEVEL_DESCRIPTIONS
+    autonomy_controller = get_autonomy_controller()
+    
+    try:
+        console.print("[bold cyan]Autonomy Level Selection[/bold cyan]")
+        for lvl in AutonomyLevel:
+            marker = " (default)" if lvl == AutonomyLevel.COPILOT else ""
+            console.print(f"{lvl.value}. {LEVEL_DESCRIPTIONS[lvl]}{marker}")
+        
+        autonomy_choice = safe_prompt_ask(
+            "\n[dim]Select autonomy level (0-3, default: 1)[/dim]", 
+            default="1"
+        )
+        
+        try:
+            level = AutonomyLevel(int(autonomy_choice))
+            autonomy_controller.set_level(level)
+            console.print(f"[green]✅ Autonomy level: {LEVEL_DESCRIPTIONS[level]}[/green]\n")
+        except (ValueError, KeyError):
+            console.print("[yellow]Using default: COPILOT[/yellow]\n")
+            autonomy_controller.set_level(AutonomyLevel.COPILOT)
+        
+        # Set confirmation callback for gated actions
+        def confirm_action(message: str, context: Dict) -> str:
+            return safe_prompt_ask(f"[bold yellow]⚠️ {message}[/bold yellow] [dim](yes/no)[/dim]", default="no")
+        
+        autonomy_controller.confirm_callback = confirm_action
+        
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
+        sys.exit(0)
+    except Exception as e:
+        console.print(f"[yellow]⚠️  Autonomy selection failed: {e}. Using default COPILOT.[/yellow]\n")
+        autonomy_controller.set_level(AutonomyLevel.COPILOT)
     
     graph = PentestGraph(
         stream_callback=graph_stream_callback,
@@ -436,12 +467,37 @@ def main():
                         # State is already persisted, just confirm
                         console.print(f"[green]✅ Conversation state saved[/green]")
                     continue
+                elif cmd == "autonomy":
+                    # Autonomy level control
+                    from agents.autonomy_controller import get_autonomy_controller, AutonomyLevel, LEVEL_DESCRIPTIONS
+                    controller = get_autonomy_controller()
+                    
+                    if len(cmd_parts) > 1:
+                        try:
+                            new_level = int(cmd_parts[1])
+                            if 0 <= new_level <= 3:
+                                controller.set_level(AutonomyLevel(new_level), current_conversation_id)
+                                console.print(f"[green]✅ Autonomy level set to: {LEVEL_DESCRIPTIONS[AutonomyLevel(new_level)]}[/green]")
+                            else:
+                                console.print("[red]Invalid level. Use 0-3.[/red]")
+                        except ValueError:
+                            console.print("[red]Invalid level. Use a number 0-3.[/red]")
+                    else:
+                        current = controller.get_level(current_conversation_id)
+                        console.print(f"\n[bold]Current Autonomy Level: {LEVEL_DESCRIPTIONS[current]}[/bold]")
+                        console.print("\nAvailable levels:")
+                        for lvl in AutonomyLevel:
+                            marker = " ← current" if lvl == current else ""
+                            console.print(f"  {lvl.value} = {LEVEL_DESCRIPTIONS[lvl]}{marker}")
+                        console.print("\n[dim]Usage: /autonomy <level>[/dim]")
+                    continue
                 elif cmd == "help":
                     console.print("\n[bold]Commands:[/bold]")
                     console.print("  /list - List all conversations")
                     console.print("  /switch <id> - Switch to conversation")
                     console.print("  /new - Create new conversation")
                     console.print("  /save - Save current conversation")
+                    console.print("  /autonomy [level] - View or set autonomy level (0-3)")
                     console.print("  /help - Show this help")
                     continue
             
@@ -595,7 +651,6 @@ def main():
                             session_context = result_state.get("session_context", {})
                             verified_target = session_context.get("target_domain")
                     
-                    # Extract target from normalized input as fallback
                     if not verified_target:
                         extracted_targets = normalized.get("targets", [])
                         if extracted_targets:
@@ -605,24 +660,19 @@ def main():
                         user_message=user_prompt,
                         assistant_message=answer,
                         tools_used=tools_used,
-                        session_id=session_id,  # Legacy
-                        conversation_id=current_conversation_id,  # Production
+                        session_id=session_id,  
+                        conversation_id=current_conversation_id,  
                         context={"target_domain": verified_target}
                     )
                 except Exception as e:
-                    # Memory is optional, don't crash if it fails
                     import warnings
                     warnings.warn(f"Failed to save to memory: {str(e)}")
                 
-                # Complete progress
                 streaming_manager.complete_progress_step("Workflow completed")
                 
-                # Stop streaming display
                 streaming_manager.stop()
                 
-                # Display final answer - ensure answer is valid before rendering
-                console.print()  # New line
-                # Final safety check: ensure answer is a non-empty string
+                console.print()  
                 if not answer or not isinstance(answer, str):
                     answer = "No answer was generated. Please try again."
                 console.print(Panel(
@@ -641,13 +691,11 @@ def main():
                 raise e
     
     except KeyboardInterrupt:
-        # Graceful exit on Ctrl+C anywhere in main loop
         streaming_manager.stop()
         console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
         sys.exit(0)
     except Exception as e:
         streaming_manager.stop()
-        # Only show traceback for non-KeyboardInterrupt errors
         if isinstance(e, KeyboardInterrupt):
             console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
             sys.exit(0)
@@ -661,7 +709,6 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        # Final catch for any KeyboardInterrupt that wasn't handled
         console = Console()
         console.print("\n\n[yellow]Interrupted by user. Goodbye![/yellow]")
         sys.exit(0)

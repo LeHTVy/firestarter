@@ -316,8 +316,15 @@ class PgVectorStore:
             
             where_sql = " AND ".join(where_clauses)
             
-            complete_params = params.copy() 
-            complete_params.extend([embedding_str, embedding_str, k])  
+            # IMPORTANT: Parameter order must match the SQL query structure:
+            # 1. First %s in SELECT is for distance calculation (embedding_str)
+            # 2. Then %s placeholders in WHERE clause (collection_name and filters)
+            # 3. Then %s in ORDER BY (embedding_str)
+            # 4. Then %s in LIMIT (k)
+            complete_params = [embedding_str]  # First: distance calculation in SELECT
+            complete_params.extend(params)  # Then: WHERE clause params (collection_name, filters)
+            complete_params.append(embedding_str)  # Then: ORDER BY
+            complete_params.append(k)  # Finally: LIMIT
             
             query_sql = """
                 SELECT 

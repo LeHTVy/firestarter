@@ -1,0 +1,56 @@
+# Autonomy Controller Configuration
+# Controls AI automation level for Firestarter
+
+# Default autonomy level (0-3)
+# 0 = MANUAL: All actions require user confirmation
+# 1 = COPILOT: Recon auto, exploit/pivot need confirmation
+# 2 = SEMI_AUTO: Recon + Scan auto, exploit needs confirmation  
+# 3 = FULL_AUTO: Full autonomous red team mode
+default_level: 1
+
+# Level descriptions (for UI display)
+level_descriptions:
+  0: "Manual - All actions require user confirmation"
+  1: "Copilot - Recon auto, exploits need approval"
+  2: "Semi-Auto - Recon + Scan auto, exploits need approval"
+  3: "Full Auto - Autonomous Red Team mode"
+
+# Action-to-level mapping
+# Format: action_name: required_level
+action_levels:
+  # Information gathering (Level 1 - COPILOT)
+  recon: 1
+  whois: 1
+  dns: 1
+  subdomain: 1
+  theharvester: 1
+  amass: 1
+  shodan: 1
+  censys: 1
+  
+  # Scanning (Level 2 - SEMI_AUTO)
+  scan: 2
+  nmap: 2
+  nikto: 2
+  wpscan: 2
+  nuclei: 2
+  vuln_scan: 2
+  gobuster: 2
+  dirbuster: 2
+  ffuf: 2
+  
+  # Exploitation (Level 3 - FULL_AUTO)
+  exploit: 3
+  metasploit: 3
+  sqlmap: 3
+  hydra: 3
+  pivot: 3
+  lateral_move: 3
+  exfiltrate: 3
+  privilege_escalation: 3
+
+# Audit settings
+audit:
+  enabled: true
+  max_entries: 1000
+  log_file: "logs/autonomy_audit.json"

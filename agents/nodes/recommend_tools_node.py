@@ -52,6 +52,7 @@ class RecommendToolsNode:
         # Extract tool recommendations from subtasks and apply mode compatibility checks
         recommended_tools = []
         tool_subtasks = []
+        policy_issues = []  # Track any policy/mode compatibility issues
         
         from tools.registry import get_registry
         tool_registry = get_registry()
