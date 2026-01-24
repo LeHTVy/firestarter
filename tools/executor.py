@@ -105,10 +105,8 @@ class ToolExecutor:
         start_time = datetime.utcnow()
         
         try:
-            if tool.implementation:
-                result = self._execute_implementation(tool.implementation, parameters)
-            else:
-                result = self._execute_generic_tool(tool_name, parameters, command_name)
+            # Use SpecExecutor for CLI tools (primary execution method)
+            result = self._execute_via_specs_direct(tool_name, command_name, parameters)
             
             end_time = datetime.utcnow()
             execution_time = (end_time - start_time).total_seconds()
@@ -205,51 +203,75 @@ class ToolExecutor:
         
         return {"valid": True}
     
-    def _execute_implementation(self, implementation_path: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute tool implementation function.
+    def _execute_via_specs_direct(
+        self,
+        tool_name: str,
+        command_name: Optional[str],
+        parameters: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute tool directly via SpecExecutor.
         
         Args:
-            implementation_path: Dot-separated path to implementation function
+            tool_name: Tool name
+            command_name: Command to execute (optional, uses default if not provided)
             parameters: Tool parameters
             
         Returns:
             Execution result
         """
         try:
-            # Parse implementation path (e.g., "tools.implementations.nmap_tool.execute")
-            parts = implementation_path.split(".")
-            module_path = ".".join(parts[:-1])
-            function_name = parts[-1]
+            from tools.specs.executor import get_spec_executor
             
-            # Import module
-            module = importlib.import_module(module_path)
+            spec_executor = get_spec_executor()
+            spec = spec_executor.get_tool(tool_name)
             
-            # Get function
-            func = getattr(module, function_name)
+            if not spec:
+                return {
+                    "success": False,
+                    "error": f"Tool '{tool_name}' not found in specs"
+                }
             
-            # Check if function accepts **kwargs
-            sig = inspect.signature(func)
-            if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                # Function accepts **kwargs
-                result = func(**parameters)
+            if not spec.is_available:
+                return {
+                    "success": False,
+                    "error": f"⚠️ TOOL NOT INSTALLED: {tool_name}. {spec.install_hint}"
+                }
+            
+            # Determine command to use
+            if command_name and command_name in spec.commands:
+                cmd = command_name
+            elif spec.commands:
+                # Use first command as default
+                cmd = list(spec.commands.keys())[0]
             else:
-                # Function has specific parameters
-                # Extract only parameters that function accepts
-                func_params = {k: v for k, v in parameters.items() if k in sig.parameters}
-                result = func(**func_params)
+                return {
+                    "success": False,
+                    "error": f"No commands defined for tool '{tool_name}'"
+                }
             
-            return result if isinstance(result, dict) else {"success": True, "results": result}
+            # Map common parameter names
+            mapped_params = {}
+            param_mapping = {
+                "target": "domain",
+                "host": "domain",
+                "target_domain": "domain",
+            }
+            for k, v in parameters.items():
+                mapped_key = param_mapping.get(k, k)
+                mapped_params[mapped_key] = v
             
-        except ImportError as e:
+            # Execute via specs
+            result = spec_executor.execute(tool_name, cmd, mapped_params)
+            
             return {
-                "success": False,
-                "error": f"Failed to import implementation: {str(e)}"
+                "success": result.success,
+                "results": result.output if result.success else None,
+                "raw_output": result.output,
+                "error": result.error if not result.success else None,
+                "exit_code": result.exit_code,
+                "elapsed_time": result.elapsed_time
             }
-        except AttributeError as e:
-            return {
-                "success": False,
-                "error": f"Implementation function not found: {str(e)}"
-            }
+            
         except Exception as e:
             return {
                 "success": False,
@@ -358,23 +380,14 @@ class ToolExecutor:
             stream_callback(f"Parameters: {parameters}")
         
         try:
-            if tool.implementation:
-                # Try to execute with streaming support
-                result = self._execute_implementation_streaming(
-                    tool.implementation,
-                    parameters,
-                    stream_callback
-                )
-            else:
-                # Generic execution (placeholder)
-                error_msg = f"Tool '{tool_name}' has no implementation"
-                if stream_callback:
-                    stream_callback(f"Error: {error_msg}")
-                result = {
-                    "success": False,
-                    "error": error_msg,
-                    "tool_name": tool_name
-                }
+            # Execute via SpecExecutor directly
+            result = self._execute_via_specs_direct(tool_name, command_name, parameters)
+            
+            if stream_callback and result.get("raw_output"):
+                stream_callback("─" * 40)
+                for line in str(result["raw_output"]).split("\n")[:50]:
+                    if line.strip():
+                        stream_callback(line.strip())
             
             end_time = datetime.utcnow()
             execution_time = (end_time - start_time).total_seconds()
@@ -434,101 +447,7 @@ class ToolExecutor:
             self.execution_history.append(error_result)
             return error_result
     
-    def _execute_implementation_streaming(self,
-                                          implementation_path: str,
-                                          parameters: Dict[str, Any],
-                                          stream_callback: Optional[Callable[[str], None]]) -> Dict[str, Any]:
-        """Execute tool implementation with streaming support.
-        
-        Args:
-            implementation_path: Dot-separated path to implementation function
-            parameters: Tool parameters
-            stream_callback: Callback for streaming output
-            
-        Returns:
-            Execution result
-        """
-        try:
-            # Parse implementation path
-            parts = implementation_path.split(".")
-            module_path = ".".join(parts[:-1])
-            function_name = parts[-1]
-            
-            # Import module
-            module = importlib.import_module(module_path)
-            
-            # Get function
-            func = getattr(module, function_name)
-            
-            # Check if function has streaming support (accepts stream_callback parameter)
-            sig = inspect.signature(func)
-            has_streaming = 'stream_callback' in sig.parameters
-            
-            if has_streaming:
-                # Function supports streaming
-                if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                    result = func(stream_callback=stream_callback, **parameters)
-                else:
-                    func_params = {k: v for k, v in parameters.items() if k in sig.parameters}
-                    result = func(stream_callback=stream_callback, **func_params)
-            else:
-                # Function doesn't support streaming - execute normally and simulate streaming
-                if stream_callback:
-                    stream_callback("Executing tool...")
-                
-                if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                    result = func(**parameters)
-                else:
-                    func_params = {k: v for k, v in parameters.items() if k in sig.parameters}
-                    result = func(**func_params)
-                
-                # If result has raw_output, stream it
-                if stream_callback and isinstance(result, dict):
-                    stream_callback("─" * 40)  # Visual separator
-                    if result.get("raw_output"):
-                        output_lines = str(result["raw_output"]).split("\n")
-                        for line in output_lines:
-                            if line.strip():
-                                stream_callback(line.strip())
-                        if len(output_lines) > 0:
-                            stream_callback(f"[Total: {len(output_lines)} lines]")
-                    elif result.get("results"):
-                        import json
-                        try:
-                            results_str = json.dumps(result["results"], indent=2, default=str)
-                            for line in results_str.split("\n")[:100]:
-                                stream_callback(line)
-                        except:
-                            stream_callback(str(result["results"])[:500])
-                    elif result.get("success"):
-                        stream_callback("Tool execution completed successfully")
-            
-            return result if isinstance(result, dict) else {"success": True, "results": result}
-            
-        except ImportError as e:
-            error_msg = f"Failed to import implementation: {str(e)}"
-            if stream_callback:
-                stream_callback(f"Error: {error_msg}")
-            return {
-                "success": False,
-                "error": error_msg
-            }
-        except AttributeError as e:
-            error_msg = f"Implementation function not found: {str(e)}"
-            if stream_callback:
-                stream_callback(f"Error: {error_msg}")
-            return {
-                "success": False,
-                "error": error_msg
-            }
-        except Exception as e:
-            error_msg = f"Execution error: {str(e)}"
-            if stream_callback:
-                stream_callback(f"Error: {error_msg}")
-            return {
-                "success": False,
-                "error": error_msg
-            }
+
     
     def get_execution_history(self, 
                              tool_name: Optional[str] = None,
