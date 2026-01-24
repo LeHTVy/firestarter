@@ -32,16 +32,30 @@
       },
       "risk_level": "low",
       "requires_auth": false,
-      "capability": ["port_scan", "service_enum", "os_detection", "version_detection"],
-      "mode": ["active"],
-      "scope": ["network", "host"],
+      "capability": [
+        "port_scan",
+        "service_enum",
+        "os_detection",
+        "version_detection"
+      ],
+      "mode": [
+        "active"
+      ],
+      "scope": [
+        "network",
+        "host"
+      ],
       "legal_risk": "low",
       "cost": {
         "time_estimate": 120,
         "bandwidth": "medium"
       },
       "permission_required": false,
-      "evidence_output": ["logs", "json", "xml"]
+      "evidence_output": [
+        "logs",
+        "json",
+        "xml"
+      ]
     },
     {
       "name": "metasploit_exploit",
@@ -75,16 +89,31 @@
       },
       "risk_level": "high",
       "requires_auth": true,
-      "capability": ["exploit_execution", "payload_generation", "post_exploitation"],
-      "mode": ["active", "destructive"],
-      "scope": ["network", "host", "web"],
+      "capability": [
+        "exploit_execution",
+        "payload_generation",
+        "post_exploitation"
+      ],
+      "mode": [
+        "active",
+        "destructive"
+      ],
+      "scope": [
+        "network",
+        "host",
+        "web"
+      ],
       "legal_risk": "high",
       "cost": {
         "time_estimate": 300,
         "bandwidth": "low"
       },
       "permission_required": true,
-      "evidence_output": ["logs", "pcap", "session_data"]
+      "evidence_output": [
+        "logs",
+        "pcap",
+        "session_data"
+      ]
     },
     {
       "name": "shodan_search",
@@ -113,9 +142,19 @@
       },
       "risk_level": "low",
       "requires_auth": true,
-      "capability": ["osint", "device_discovery", "service_enum", "ip_enrichment"],
-      "mode": ["passive"],
-      "scope": ["network", "cloud"],
+      "capability": [
+        "osint",
+        "device_discovery",
+        "service_enum",
+        "ip_enrichment"
+      ],
+      "mode": [
+        "passive"
+      ],
+      "scope": [
+        "network",
+        "cloud"
+      ],
       "legal_risk": "low",
       "cost": {
         "time_estimate": 5,
@@ -123,7 +162,10 @@
         "api_quota": true
       },
       "permission_required": true,
-      "evidence_output": ["json", "csv"]
+      "evidence_output": [
+        "json",
+        "csv"
+      ]
     },
     {
       "name": "virustotal_scan",
@@ -3589,7 +3631,9 @@
     {
       "name": "ps",
       "description": "Port scanner with service detection (network port scanner)",
-      "aliases": ["nmap"],
+      "aliases": [
+        "nmap"
+      ],
       "category": "recon",
       "priority": true,
       "assigned_agents": [
@@ -3978,7 +4022,10 @@
     {
       "name": "finder",
       "description": "Subdomain discovery tool (fast subdomain finder)",
-      "aliases": ["subfinder"],
+      "implementation": "tools.implementations.subfinder_tool.enum",
+      "aliases": [
+        "subfinder"
+      ],
       "category": "recon",
       "priority": false,
       "assigned_agents": [
@@ -4058,7 +4105,10 @@
     {
       "name": "mass",
       "description": "In-depth subdomain enumeration (subdomain discovery)",
-      "aliases": ["amass"],
+      "implementation": "tools.implementations.amass_tool.passive",
+      "aliases": [
+        "amass"
+      ],
       "category": "recon",
       "priority": true,
       "assigned_agents": [

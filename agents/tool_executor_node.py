@@ -5,8 +5,11 @@ Inspired by rutx approach for simple, direct tool execution.
 """
 
 from typing import Dict, Any, Optional, Callable, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tools.executor import get_executor
 # FeedbackLearner removed
+
+MAX_CONCURRENT_TOOLS = 5  # Maximum tools to run in parallel
 
 
 class ToolExecutorNode:
@@ -227,7 +230,7 @@ class ToolExecutorNode:
     
     def _execute_subtasks(self, state: Dict[str, Any], subtasks: List[Dict],
                          target: Optional[str]) -> List[Dict]:
-        """Execute all tool subtasks."""
+        """Execute all tool subtasks with concurrent execution support."""
         tool_results = []
         
         # Create callbacks
@@ -237,22 +240,59 @@ class ToolExecutorNode:
         # Get targets
         targets = self._extract_targets(state, target)
         
+        # Collect all tool execution tasks
+        tool_tasks = []
         for subtask in subtasks:
             if subtask.get("type") != "tool_execution":
                 continue
-            
             tools = subtask.get("required_tools", [])
-            
             for tool_name in tools:
+                tool_tasks.append((subtask, tool_name))
+        
+        # Execute tools concurrently (max MAX_CONCURRENT_TOOLS at a time)
+        if len(tool_tasks) <= 1:
+            # Single tool - run directly
+            for subtask, tool_name in tool_tasks:
                 result = self._execute_single_tool(
                     state, subtask, tool_name, targets,
                     model_callback, tool_stream_callback
                 )
-                
                 if result:
                     tool_results.append(result)
                     self._store_result(result, state)
                     self._track_feedback(result, tool_name, state)
+        else:
+            # Multiple tools - run concurrently
+            if self.stream_callback:
+                self.stream_callback("model_response", "system",
+                    f"🚀 Executing {len(tool_tasks)} tool(s) concurrently (max {MAX_CONCURRENT_TOOLS})...")
+            
+            with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TOOLS) as executor:
+                futures = {}
+                for subtask, tool_name in tool_tasks:
+                    future = executor.submit(
+                        self._execute_single_tool,
+                        state, subtask, tool_name, targets,
+                        None, None  # No streaming for concurrent execution
+                    )
+                    futures[future] = tool_name
+                
+                for future in as_completed(futures):
+                    tool_name = futures[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            tool_results.append(result)
+                            self._store_result(result, state)
+                            self._track_feedback(result, tool_name, state)
+                            if self.stream_callback:
+                                status = "✅" if result.get("success") else "❌"
+                                self.stream_callback("model_response", "system",
+                                    f"{status} {tool_name} completed")
+                    except Exception as e:
+                        if self.stream_callback:
+                            self.stream_callback("model_response", "system",
+                                f"❌ {tool_name} failed: {e}")
         
         return tool_results
     

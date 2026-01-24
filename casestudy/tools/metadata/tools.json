@@ -1,0 +1,223 @@
+{
+  "nmap": {
+    "name": "nmap",
+    "description": "Network scanner for port discovery, service detection, and vulnerability scanning",
+    "category": "scanning",
+    "priority": true,
+    "assigned_agents": ["recon_agent", "scan_agent"],
+    "executable_names": ["nmap"],
+    "install_hint": "sudo apt install nmap",
+    "commands": {
+      "quick_scan": {
+        "description": "Fast scan of common ports",
+        "timeout": 120,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {"type": "string", "description": "Target IP or domain", "required": true}
+          },
+          "required": ["target"]
+        }
+      },
+      "service_scan": {
+        "description": "Detailed service and version detection",
+        "timeout": 600,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {"type": "string", "description": "Target IP or domain", "required": true},
+            "ports": {"type": "string", "description": "Ports to scan (e.g., '1-1000' or '22,80,443')"}
+          },
+          "required": ["target"]
+        }
+      },
+      "vuln_scan": {
+        "description": "Vulnerability scanning with NSE scripts",
+        "timeout": 900,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {"type": "string", "description": "Target IP or domain", "required": true},
+            "scripts": {"type": "string", "description": "NSE scripts to run (e.g., 'vuln' or 'default')"}
+          },
+          "required": ["target"]
+        }
+      }
+    }
+  },
+  "subfinder": {
+    "name": "subfinder",
+    "description": "Subdomain discovery tool using passive sources",
+    "category": "recon",
+    "priority": true,
+    "assigned_agents": ["recon_agent"],
+    "executable_names": ["subfinder"],
+    "install_hint": "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
+    "commands": {
+      "enumerate": {
+        "description": "Enumerate subdomains for a domain",
+        "timeout": 300,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "domain": {"type": "string", "description": "Target domain", "required": true},
+            "silent": {"type": "boolean", "description": "Silent mode (no banner)"}
+          },
+          "required": ["domain"]
+        }
+      }
+    }
+  },
+  "httpx": {
+    "name": "httpx",
+    "description": "HTTP probing toolkit for web server discovery",
+    "category": "recon",
+    "priority": true,
+    "assigned_agents": ["recon_agent", "scan_agent"],
+    "executable_names": ["httpx"],
+    "install_hint": "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest",
+    "commands": {
+      "probe": {
+        "description": "Probe URLs for live hosts",
+        "timeout": 300,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {"type": "string", "description": "Target URL or domain", "required": true},
+            "tech_detect": {"type": "boolean", "description": "Detect technologies"}
+          },
+          "required": ["target"]
+        }
+      }
+    }
+  },
+  "nuclei": {
+    "name": "nuclei",
+    "description": "Fast vulnerability scanner using templates",
+    "category": "vulnerability",
+    "priority": true,
+    "assigned_agents": ["vuln_agent"],
+    "executable_names": ["nuclei"],
+    "install_hint": "go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
+    "commands": {
+      "scan": {
+        "description": "Run nuclei templates against target",
+        "timeout": 900,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {"type": "string", "description": "Target URL", "required": true},
+            "templates": {"type": "string", "description": "Template tags or paths"},
+            "severity": {"type": "string", "description": "Severity filter", "enum": ["info", "low", "medium", "high", "critical"]}
+          },
+          "required": ["target"]
+        }
+      }
+    }
+  },
+  "ffuf": {
+    "name": "ffuf",
+    "description": "Fast web fuzzer for directory and parameter discovery",
+    "category": "enumeration",
+    "priority": true,
+    "assigned_agents": ["scan_agent"],
+    "executable_names": ["ffuf"],
+    "install_hint": "go install github.com/ffuf/ffuf@latest",
+    "commands": {
+      "dir_fuzz": {
+        "description": "Fuzz directories on web server",
+        "timeout": 600,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {"type": "string", "description": "Target URL with FUZZ keyword", "required": true},
+            "wordlist": {"type": "string", "description": "Path to wordlist"}
+          },
+          "required": ["url"]
+        }
+      }
+    }
+  },
+  "gobuster": {
+    "name": "gobuster",
+    "description": "Directory and DNS brute-forcer",
+    "category": "enumeration",
+    "priority": false,
+    "assigned_agents": ["scan_agent"],
+    "executable_names": ["gobuster"],
+    "install_hint": "go install github.com/OJ/gobuster/v3@latest",
+    "commands": {
+      "dir": {
+        "description": "Directory brute-forcing",
+        "timeout": 600,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {"type": "string", "description": "Target URL", "required": true},
+            "wordlist": {"type": "string", "description": "Path to wordlist"}
+          },
+          "required": ["url"]
+        }
+      },
+      "dns": {
+        "description": "DNS subdomain brute-forcing",
+        "timeout": 600,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "domain": {"type": "string", "description": "Target domain", "required": true},
+            "wordlist": {"type": "string", "description": "Path to wordlist"}
+          },
+          "required": ["domain"]
+        }
+      }
+    }
+  },
+  "sqlmap": {
+    "name": "sqlmap",
+    "description": "Automatic SQL injection detection and exploitation",
+    "category": "exploitation",
+    "priority": true,
+    "assigned_agents": ["exploit_agent"],
+    "executable_names": ["sqlmap"],
+    "install_hint": "sudo apt install sqlmap",
+    "commands": {
+      "test": {
+        "description": "Test URL for SQL injection",
+        "timeout": 900,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {"type": "string", "description": "Target URL with parameters", "required": true},
+            "level": {"type": "integer", "description": "Test level (1-5)"},
+            "risk": {"type": "integer", "description": "Risk level (1-3)"}
+          },
+          "required": ["url"]
+        }
+      }
+    }
+  },
+  "nikto": {
+    "name": "nikto",
+    "description": "Web server vulnerability scanner",
+    "category": "vulnerability",
+    "priority": false,
+    "assigned_agents": ["vuln_agent"],
+    "executable_names": ["nikto"],
+    "install_hint": "sudo apt install nikto",
+    "commands": {
+      "scan": {
+        "description": "Scan web server for vulnerabilities",
+        "timeout": 900,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "host": {"type": "string", "description": "Target host", "required": true},
+            "port": {"type": "integer", "description": "Target port"}
+          },
+          "required": ["host"]
+        }
+      }
+    }
+  }
+}

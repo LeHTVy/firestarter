@@ -106,8 +106,10 @@ class AnalyzeNode:
         # PROACTIVE: Check if this is a direct tool execution command
         tool_execution_match = self._detect_direct_tool_command(user_prompt)
         if tool_execution_match:
-            tool_name = tool_execution_match["tool"]
             target = tool_execution_match["target"]
+            
+            # Handle single tool or multiple tools
+            tool_names = tool_execution_match.get("tools") or [tool_execution_match.get("tool")]
             
             # Update session context with target
             if session_context:
@@ -120,30 +122,34 @@ class AnalyzeNode:
                 new_context = context_mgr.create_context({"target_domain": target})
                 state["session_context"] = new_context.to_dict()
             
-            # Create immediate tool execution subtask
-            subtask = {
-                "id": f"subtask_direct_{tool_name}",
-                "name": f"Execute {tool_name}",
-                "description": f"Execute {tool_name} on {target}",
-                "type": "tool_execution",
-                "required_tools": [tool_name],
-                "required_agent": "recon_agent",
-                "priority": "high"
-            }
+            # Create subtasks for each tool
+            subtasks = []
+            for i, tool_name in enumerate(tool_names):
+                subtask = {
+                    "id": f"subtask_direct_{tool_name}_{i}",
+                    "name": f"Execute {tool_name}",
+                    "description": f"Execute {tool_name} on {target}",
+                    "type": "tool_execution",
+                    "required_tools": [tool_name],
+                    "required_agent": "recon_agent",
+                    "priority": "high"
+                }
+                subtasks.append(subtask)
             
+            tools_str = ", ".join(tool_names)
             state["analysis"] = {
-                "user_intent": f"Execute {tool_name} on {target}",
+                "user_intent": f"Execute {tools_str} on {target}",
                 "intent_type": "request",
                 "task_type": "recon",
-                "complexity": "simple",
+                "complexity": "simple" if len(tool_names) == 1 else "medium",
                 "needs_tools": True,
                 "can_answer_directly": False
             }
-            state["subtasks"] = [subtask]
+            state["subtasks"] = subtasks
             
             if self.stream_callback:
                 self.stream_callback("model_response", "system", 
-                    f"✅ Detected direct tool command: {tool_name} on {target}. Routing to tool execution...")
+                    f"✅ Detected direct tool command: {tools_str} on {target}. Routing to tool execution...")
             
             return state
         
@@ -392,15 +398,16 @@ Do NOT refuse. Provide the analysis and subtasks."""
                         f"✅ [PATH B: FALLBACK] Created {len(subtasks)} subtask(s): {subtask_info}")
         
         return state
-    
-    def _detect_direct_tool_command(self, user_prompt: str) -> Optional[Dict[str, str]]:
+    def _detect_direct_tool_command(self, user_prompt: str) -> Optional[Dict[str, Any]]:
         """Detect direct tool execution commands like "use whois on domain" or "run nmap on target".
+        
+        Supports multiple tools: "use amass and subfinder on domain"
         
         Args:
             user_prompt: User prompt
             
         Returns:
-            Dict with "tool" and "target" if detected, None otherwise
+            Dict with "tool"/"tools" and "target" if detected, None otherwise
         """
         import re
         from tools.registry import get_registry
@@ -432,7 +439,37 @@ Do NOT refuse. Provide the analysis and subtasks."""
             "banner": "banner_grabbing",
         }
         
-        # Patterns to match: "run TOOL on TARGET", "use TOOL on TARGET", etc.
+        def resolve_tool_name(name: str) -> Optional[str]:
+            """Resolve tool name through aliases and fuzzy matching."""
+            name = name.strip().lower()
+            if name in all_tools:
+                return name
+            if name in tool_aliases:
+                actual = tool_aliases[name]
+                if actual in all_tools:
+                    return actual
+            matched = fuzzy_matcher.fuzzy_match_tool(name, threshold=70)
+            if matched and matched in all_tools:
+                return matched
+            return None
+        
+        # Pattern for multi-tool commands: "use TOOL1 and TOOL2 on TARGET"
+        multi_tool_pattern = r"(?:run|use|execute|call|invoke)\s+([\w]+(?:\s+and\s+[\w]+)+)\s+(?:on|for)\s+([a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?)"
+        match = re.search(multi_tool_pattern, prompt_lower)
+        if match:
+            tools_raw = match.group(1)
+            target = match.group(2)
+            # Split by "and"
+            tool_names_raw = re.split(r'\s+and\s+', tools_raw)
+            resolved_tools = []
+            for name in tool_names_raw:
+                resolved = resolve_tool_name(name)
+                if resolved:
+                    resolved_tools.append(resolved)
+            if resolved_tools:
+                return {"tools": resolved_tools, "target": target}
+        
+        # Single tool patterns
         patterns = [
             r"(?:run|use|execute|call|invoke)\s+(\w+)\s+on\s+([a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?)",
             r"(?:run|use|execute|call|invoke)\s+(\w+)\s+for\s+([a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?)",
@@ -445,19 +482,8 @@ Do NOT refuse. Provide the analysis and subtasks."""
                 tool_name_raw = match.group(1).lower()
                 target = match.group(2)
                 
-                # Try exact match first
-                if tool_name_raw in all_tools:
-                    return {"tool": tool_name_raw, "target": target}
-                
-                # Try alias mapping
-                if tool_name_raw in tool_aliases:
-                    actual_tool = tool_aliases[tool_name_raw]
-                    if actual_tool in all_tools:
-                        return {"tool": actual_tool, "target": target}
-                
-                # Try fuzzy matching
-                matched_tool = fuzzy_matcher.fuzzy_match_tool(tool_name_raw, threshold=70)
-                if matched_tool and matched_tool in all_tools:
-                    return {"tool": matched_tool, "target": target}
+                resolved = resolve_tool_name(tool_name_raw)
+                if resolved:
+                    return {"tool": resolved, "target": target}
         
         return None
