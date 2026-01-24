@@ -67,3 +67,11 @@ def get_all_specs() -> List[ToolSpec]:
     all_specs.extend(web.get_specs())
     
     return all_specs
+
+
+# Re-export executor for convenience
+def get_spec_executor():
+    """Get global spec executor instance."""
+    from tools.specs.executor import get_spec_executor as _get_executor
+    return _get_executor()
+
