@@ -44,9 +44,31 @@ class AnalyzeNode:
             Updated state
         """
         user_prompt = state["user_prompt"]
+        conversation_id = state.get("conversation_id") or state.get("session_id")
+        
+        # MEMORY QUERY : Check if this is a query request (not tool execution)
+        if self._is_query_request(user_prompt):
+            memory_answer = self._query_memory(user_prompt, conversation_id)
+            if memory_answer:
+                # Found answer in memory - skip tool execution
+                state["analysis"] = {
+                    "user_intent": "Query past results from memory",
+                    "intent_type": "memory_query",
+                    "task_type": "retrieval",
+                    "complexity": "simple",
+                    "needs_tools": False,
+                    "can_answer_directly": True
+                }
+                state["subtasks"] = []
+                state["memory_answer"] = memory_answer
+                
+                if self.stream_callback:
+                    self.stream_callback("model_response", "system",
+                        f"✅ Found answer in {memory_answer['source']} (no tools executed)")
+                
+                return state
         
         # Get comprehensive context from memory manager
-        conversation_id = state.get("conversation_id") or state.get("session_id")
         memory_context = self.memory_manager.retrieve_context(
             query=user_prompt,
             k=5,
@@ -485,5 +507,211 @@ Do NOT refuse. Provide the analysis and subtasks."""
                 resolved = resolve_tool_name(tool_name_raw)
                 if resolved:
                     return {"tool": resolved, "target": target}
+        
+        return None
+    
+    # Hardcode keywords for now - Temporarily
+    def _is_query_request(self, user_prompt: str) -> bool:
+        """Detect if user is querying past results vs requesting new scan.
+        
+        Query keywords: "show me", "display", "list", "what did you find", etc.
+        Execution keywords: "find", "scan", "test", "assess", "enumerate", etc.
+        
+        Args:
+            user_prompt: User prompt text
+            
+        Returns:
+            True if this is a query request (should check memory)
+        """
+        query_keywords = [
+            "show me", "display", "list", "what did you find",
+            "results", "what are the", "give me the", "tell me the",
+            "show the", "get the", "what were the", "show all",
+            "display the", "list the", "list all", "show results",
+            "what subdomains", "what ips", "what ports", "what vulnerabilities"
+        ]
+        
+        # Check if prompt contains query keywords
+        prompt_lower = user_prompt.lower()
+        return any(keyword in prompt_lower for keyword in query_keywords)
+    
+    def _query_memory(self, user_prompt: str, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Query 4-layer memory architecture for past results.
+        
+        Architecture (from fastest to slowest):
+        1. Session Memory (in-memory) - current session findings
+        2. Redis Buffer (short-term) - recent findings with fast access
+        3. PostgreSQL (medium-term) - persistent agent state
+        4. VectorDB (long-term) - semantic search across all results
+        
+        Args:
+            user_prompt: User query text
+            conversation_id: Conversation UUID
+            
+        Returns:
+            Dict with answer, source, and data if found, None otherwise
+        """
+        prompt_lower = user_prompt.lower()
+        
+        # Layer 1: Session Memory (fastest - in-memory)
+        session_memory = self.memory_manager.get_session_memory()
+        if session_memory:
+            agent_ctx = session_memory.agent_context
+            
+            # Query subdomains
+            if "subdomain" in prompt_lower:
+                subdomains = agent_ctx.subdomains
+                if subdomains:
+                    return {
+                        "answer": f"Found {len(subdomains)} subdomain(s) from session memory:\n" + 
+                                 "\n".join(f"- {s}" for s in subdomains[:50]),
+                        "source": "session_memory",
+                        "data": subdomains,
+                        "count": len(subdomains)
+                    }
+            
+            # Query IPs
+            if "ip" in prompt_lower or "address" in prompt_lower:
+                ips = agent_ctx.ips
+                if ips:
+                    return {
+                        "answer": f"Found {len(ips)} IP address(es) from session memory:\n" + 
+                                 "\n".join(f"- {ip}" for ip in ips),
+                        "source": "session_memory",
+                        "data": ips,
+                        "count": len(ips)
+                    }
+            
+            # Query ports
+            if "port" in prompt_lower:
+                ports = agent_ctx.open_ports
+                if ports:
+                    port_list = "\n".join(
+                        f"- {p.get('host', 'unknown')}:{p.get('port', '?')} "
+                        f"({p.get('service', 'unknown')})"
+                        for p in ports[:50]
+                    )
+                    return {
+                        "answer": f"Found {len(ports)} open port(s) from session memory:\n{port_list}",
+                        "source": "session_memory",
+                        "data": ports,
+                        "count": len(ports)
+                    }
+            
+            # Query vulnerabilities
+            if "vuln" in prompt_lower or "cve" in prompt_lower:
+                vulns = agent_ctx.vulnerabilities
+                if vulns:
+                    vuln_list = "\n".join(
+                        f"- {v.get('type', 'unknown')} on {v.get('target', 'unknown')} "
+                        f"(severity: {v.get('severity', 'unknown')})"
+                        for v in vulns[:50]
+                    )
+                    return {
+                        "answer": f"Found {len(vulns)} vulnerability/ies from session memory:\n{vuln_list}",
+                        "source": "session_memory",
+                        "data": vulns,
+                        "count": len(vulns)
+                    }
+        
+        # Layer 2: Redis Buffer (fast - short-term cache)
+        if conversation_id:
+            try:
+                agent_context = self.memory_manager.redis_buffer.get_state(
+                    conversation_id, "agent_context"
+                )
+                if agent_context:
+                    # Query subdomains from Redis
+                    if "subdomain" in prompt_lower and agent_context.get("subdomains"):
+                        subs = agent_context["subdomains"]
+                        return {
+                            "answer": f"Found {len(subs)} subdomain(s) from Redis cache:\n" + 
+                                     "\n".join(f"- {s}" for s in subs[:50]),
+                            "source": "redis_buffer",
+                            "data": subs,
+                            "count": len(subs)
+                        }
+                    
+                    # Query IPs from Redis
+                    if ("ip" in prompt_lower or "address" in prompt_lower) and agent_context.get("ips"):
+                        ips = agent_context["ips"]
+                        return {
+                            "answer": f"Found {len(ips)} IP(s) from Redis cache:\n" + 
+                                     "\n".join(f"- {ip}" for ip in ips),
+                            "source": "redis_buffer",
+                            "data": ips,
+                            "count": len(ips)
+                        }
+            except Exception:
+                pass  # Redis may not be available
+        
+        # Layer 3: PostgreSQL (medium - persistent storage)
+        if conversation_id:
+            try:
+                agent_state = self.memory_manager.namespace_manager.load_agent_state(
+                    conversation_id, "session_memory"
+                )
+                if agent_state:
+                    agent_ctx = agent_state.get("agent_context", {})
+                    
+                    # Query subdomains from PostgreSQL
+                    if "subdomain" in prompt_lower and agent_ctx.get("subdomains"):
+                        subs = agent_ctx["subdomains"]
+                        return {
+                            "answer": f"Found {len(subs)} subdomain(s) from PostgreSQL:\n" + 
+                                     "\n".join(f"- {s}" for s in subs[:50]),
+                            "source": "postgresql",
+                            "data": subs,
+                            "count": len(subs)
+                        }
+                    
+                    # Query IPs from PostgreSQL
+                    if ("ip" in prompt_lower or "address" in prompt_lower) and agent_ctx.get("ips"):
+                        ips = agent_ctx["ips"]
+                        return {
+                            "answer": f"Found {len(ips)} IP(s) from PostgreSQL:\n" + 
+                                     "\n".join(f"- {ip}" for ip in ips),
+                            "source": "postgresql",
+                            "data": ips,
+                            "count": len(ips)
+                        }
+            except Exception:
+                pass  # PostgreSQL may not be available
+        
+        # Layer 4: VectorDB (slowest but most powerful - semantic search)
+        if conversation_id:
+            try:
+                tool_results = self.memory_manager.results_storage.retrieve_results(
+                    query=user_prompt,
+                    k=5,
+                    conversation_id=conversation_id
+                )
+                
+                # Parse tool results for relevant data
+                for result in tool_results:
+                    metadata = result.get("metadata", {})
+                    tool_name = metadata.get("tool_name", "")
+                    doc = result.get("document", "")
+                    
+                    # Check if this is subdomain discovery result
+                    if "subdomain" in prompt_lower and tool_name in ["mass", "subdomain_discovery", "finder", "amass"]:
+                        # Extract subdomains from document using regex
+                        import re
+                        # Match domain patterns
+                        subdomain_pattern = r'(?:^|\s)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+)'
+                        subdomain_matches = re.findall(subdomain_pattern, doc)
+                        if subdomain_matches:
+                            # Deduplicate
+                            unique_subs = list(set(subdomain_matches))
+                            return {
+                                "answer": f"Found {len(unique_subs)} subdomain(s) from {tool_name} (VectorDB):\n" + 
+                                         "\n".join(f"- {s}" for s in unique_subs[:50]),
+                                "source": "vectordb",
+                                "data": unique_subs,
+                                "count": len(unique_subs),
+                                "tool": tool_name
+                            }
+            except Exception:
+                pass  
         
         return None

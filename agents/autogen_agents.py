@@ -286,23 +286,81 @@ class AutoGenCoordinator:
         """
         return self.agents.get(agent_name)
     
-    def route_task(self, task: str, task_type: str) -> Optional[str]:
-        """Route task to appropriate agent.
+    # Tool map for routing tasks to appropriate agents
+    def route_task(self, task: str, task_type: str, required_tools: List[str] = None) -> Optional[str]:
+        """Route task to appropriate agent based on task type and tools.
+        
+        Uses tool-to-agent mapping for accurate routing when tools are specified.
+        Falls back to task_type-based routing otherwise.
         
         Args:
             task: Task description
             task_type: Task type (recon, exploitation, analysis)
+            required_tools: List of required tools for this task
             
         Returns:
             Agent name or None
         """
+        # Tool-to-Agent capability mapping
+        tool_agent_map = {
+            # Recon tools
+            "subdomain_discovery": "recon_agent",
+            "mass": "recon_agent",
+            "finder": "recon_agent",
+            "amass": "recon_agent",
+            "nmap_scan": "recon_agent",
+            "port_scan": "recon_agent",
+            "dns_enum": "recon_agent",
+            "dig": "recon_agent",
+            "whois_lookup": "recon_agent",
+            "ssl_cert_scan": "recon_agent",
+            "banner_grabbing": "recon_agent",
+            "theHarvester": "recon_agent",
+            "shodan_search": "recon_agent",
+            "censys_search": "recon_agent",
+            "service_detection": "recon_agent",
+            "os_detection": "recon_agent",
+            
+            # Exploitation tools
+            "metasploit_exploit": "exploit_agent",
+            "sql_injection_test": "exploit_agent",
+            "xss_test": "exploit_agent",
+            "nuclei": "exploit_agent",
+            "sqlmap": "exploit_agent",
+            "nikto": "exploit_agent",
+            "dirb": "exploit_agent",
+            "gobuster": "exploit_agent",
+            "hydra": "exploit_agent",
+            "john": "exploit_agent",
+            "hashcat": "exploit_agent",
+            
+            # Analysis tools
+            "virustotal_scan": "analysis_agent",
+            "report_generator": "analysis_agent",
+        }
+        
+        # If tools are specified, use tool-based routing
+        if required_tools:
+            agent_votes = {}
+            for tool in required_tools:
+                agent = tool_agent_map.get(tool)
+                if agent:
+                    agent_votes[agent] = agent_votes.get(agent, 0) + 1
+            
+            # Return agent with most matching tools
+            if agent_votes:
+                return max(agent_votes, key=agent_votes.get)
+        
+        # Fallback to task_type-based routing
         if task_type == "recon":
             return "recon_agent"
         elif task_type == "exploitation":
             return "exploit_agent"
         elif task_type == "analysis":
             return "analysis_agent"
-        return None
+        
+        # Default to recon_agent for unknown types
+        return "recon_agent"
     
     def execute_with_agent(self,
                            agent_name: str,
@@ -363,10 +421,8 @@ class AutoGenCoordinator:
         """
         messages = []
         for msg in self.message_board:
-            # Messages sent to this agent
             if msg["to_agent"] == agent_name:
                 messages.append(msg)
-            # Broadcast messages (to_agent is None or "all")
             elif msg["to_agent"] in [None, "all", ""]:
                 messages.append(msg)
         
@@ -379,10 +435,8 @@ class AutoGenCoordinator:
             agent_name: Agent name that found the data
             findings: Findings dictionary (subdomains, ports, vulnerabilities, etc.)
         """
-        # Merge findings into shared context
         if "subdomains" in findings:
             self.shared_context["subdomains"].extend(findings["subdomains"])
-            # Remove duplicates
             self.shared_context["subdomains"] = list(set(self.shared_context["subdomains"]))
         
         if "open_ports" in findings:
@@ -394,7 +448,6 @@ class AutoGenCoordinator:
         if "technologies" in findings:
             self.shared_context["technologies"].extend(findings["technologies"])
         
-        # Store agent-specific findings
         self.shared_context["findings"][agent_name] = findings
     
     def get_shared_context(self) -> Dict[str, Any]:

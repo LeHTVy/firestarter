@@ -33,6 +33,19 @@ class SynthesizeNode:
         Returns:
             Updated state with final_answer
         """
+        # MEMORY QUERY: Check if this was answered from memory
+        memory_answer = state.get("memory_answer")
+        if memory_answer:
+            state["final_answer"] = memory_answer["answer"]
+            
+            if self.stream_callback:
+                source = memory_answer.get("source", "unknown")
+                count = memory_answer.get("count", 0)
+                self.stream_callback("model_response", "system",
+                    f"📊 Retrieved {count} item(s) from {source} (instant, no tools executed)")
+            
+            return state
+        
         # Get tool results from current run or retrieve historical context
         tool_results = state.get("tool_results", [])
         

@@ -478,6 +478,9 @@ class MemoryManager:
         # Update topics
         if "topics" in updates:
             ctx.add_topics(updates["topics"])
+        
+        # 🆕 PERSISTENCE FIX: Persist agent context after every update
+        self._persist_agent_context()
     
     def get_context_summary(self) -> str:
         """Get a summary of current context."""
@@ -701,11 +704,54 @@ class MemoryManager:
         
         return None
     
+    def _persist_agent_context(self):
+        """Persist agent context to PostgreSQL and Redis.
+        
+        This ensures findings (subdomains, IPs, ports, vulnerabilities) are saved
+        and can be retrieved after restart or in future sessions.
+        
+        Architecture:
+        - PostgreSQL: Long-term persistent storage
+        - Redis: Short-term cache for fast access
+        """
+        if not self.session_memory:
+            return
+        
+        conv_id = self.conversation_id
+        if not conv_id:
+            return
+        
+        try:
+            # Prepare state data
+            state_data = {
+                "session_memory": self.session_memory.to_dict(),
+                "agent_context": self.session_memory.agent_context.to_dict()
+            }
+            
+            # Persist to PostgreSQL (long-term storage)
+            self.namespace_manager.save_agent_state(
+                conv_id, 
+                "session_memory", 
+                state_data
+            )
+            
+            # Persist to Redis (short-term cache)
+            self.redis_buffer.set_state(
+                conv_id, 
+                "agent_context", 
+                self.session_memory.agent_context.to_dict()
+            )
+               
+        except Exception as e:
+            import warnings
+            warnings.warn(f"Failed to persist agent context: {e}")
+    
     def clear_verified_target(self, session_id: Optional[str] = None):
         """Clear verified target for a session."""
         session = session_id or self.session_id
         if session and session in self._verified_targets:
             del self._verified_targets[session]
+
 
 
 # Singleton instance
