@@ -327,10 +327,38 @@ class SpecExecutor:
         """Build command arguments from template and params."""
         args = [spec.executable_path]
         
+        # Parameter fallbacks - allow common parameter aliases
+        normalized_params = dict(params)
+        
+        # target fallbacks: domain, url, host, ip can all be used as target
+        if 'target' not in normalized_params:
+            for fallback in ['domain', 'url', 'host', 'ip', 'address']:
+                if fallback in normalized_params:
+                    normalized_params['target'] = normalized_params[fallback]
+                    break
+        
+        # domain fallbacks: target, host can be used as domain
+        if 'domain' not in normalized_params:
+            for fallback in ['target', 'host', 'url']:
+                if fallback in normalized_params:
+                    normalized_params['domain'] = normalized_params[fallback]
+                    break
+        
+        # url fallbacks: target, domain can be used as url
+        if 'url' not in normalized_params:
+            for fallback in ['target', 'domain', 'host']:
+                if fallback in normalized_params:
+                    val = normalized_params[fallback]
+                    # Add http:// if not present
+                    if not val.startswith('http'):
+                        val = f"http://{val}"
+                    normalized_params['url'] = val
+                    break
+        
         for arg in template.args:
             if "{" in arg and "}" in arg:
                 # Template variable - substitute
-                for key, value in params.items():
+                for key, value in normalized_params.items():
                     arg = arg.replace(f"{{{key}}}", str(value))
                 if "{" in arg:
                     # Still has unsubstituted vars

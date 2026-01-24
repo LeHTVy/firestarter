@@ -147,7 +147,7 @@ def get_specs() -> List[ToolSpec]:
             description="OSINT tool for email and subdomain harvesting",
             executable_names=["theHarvester", "theharvester"],
             install_hint="pip install theHarvester",
-            aliases=["harvester", "email_harvester", "theharvester"],
+            aliases=["harvester", "email_harvester", "theharvester", "email_harvesting"],
             commands={
                 "enum": CommandTemplate(
                     args=["-d", "{domain}", "-b", "all"],
@@ -158,6 +158,35 @@ def get_specs() -> List[ToolSpec]:
                     args=["-d", "{domain}", "-b", "google,bing,duckduckgo"],
                     timeout=120,
                     description="Quick harvest from search engines"
+                ),
+            }
+        ),
+        
+        # ─────────────────────────────────────────────────────────
+        # BBOT - OSINT Automation Framework
+        # ─────────────────────────────────────────────────────────
+        ToolSpec(
+            name="bbot",
+            category=ToolCategory.RECON,
+            description="OSINT automation framework for subdomain discovery and scanning",
+            executable_names=["bbot"],
+            install_hint="pip install bbot",
+            aliases=["bbot_scanner", "osint_scanner"],
+            commands={
+                "subdomain": CommandTemplate(
+                    args=["-t", "{target}", "-f", "subdomain-enum", "-y"],
+                    timeout=600,
+                    description="Subdomain enumeration"
+                ),
+                "web": CommandTemplate(
+                    args=["-t", "{target}", "-f", "web-basic", "-y"],
+                    timeout=600,
+                    description="Basic web scanning"
+                ),
+                "quick": CommandTemplate(
+                    args=["-t", "{target}", "-m", "nmap", "httpx", "-y"],
+                    timeout=300,
+                    description="Quick scan with nmap and httpx"
                 ),
             }
         ),
