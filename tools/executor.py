@@ -278,6 +278,73 @@ class ToolExecutor:
                 "error": f"Execution error: {str(e)}"
             }
     
+    def _execute_via_specs_streaming(
+        self,
+        tool_name: str,
+        command_name: Optional[str],
+        parameters: Dict[str, Any],
+        stream_callback: Optional[Callable[[str], None]] = None
+    ) -> Dict[str, Any]:
+        """Execute tool with real-time streaming via SpecExecutor.
+        
+        Args:
+            tool_name: Tool name
+            command_name: Command to execute
+            parameters: Tool parameters
+            stream_callback: Callback for each line of output
+            
+        Returns:
+            Execution result
+        """
+        try:
+            from tools.specs.executor import get_spec_executor
+            
+            spec_executor = get_spec_executor()
+            spec = spec_executor.get_tool(tool_name)
+            
+            if not spec:
+                if stream_callback:
+                    stream_callback(f"❌ Tool '{tool_name}' not found")
+                return {"success": False, "error": f"Tool '{tool_name}' not found in specs"}
+            
+            if not spec.is_available:
+                error = f"⚠️ TOOL NOT INSTALLED: {tool_name}. {spec.install_hint}"
+                if stream_callback:
+                    stream_callback(error)
+                return {"success": False, "error": error}
+            
+            # Determine command to use
+            if command_name and command_name in spec.commands:
+                cmd = command_name
+            elif spec.commands:
+                cmd = list(spec.commands.keys())[0]
+            else:
+                return {"success": False, "error": f"No commands for '{tool_name}'"}
+            
+            # Map parameters
+            param_mapping = {"target": "domain", "host": "domain", "target_domain": "domain"}
+            mapped_params = {}
+            for k, v in parameters.items():
+                mapped_key = param_mapping.get(k, k)
+                mapped_params[mapped_key] = v
+            
+            # Execute with streaming
+            result = spec_executor.execute_streaming(tool_name, cmd, mapped_params, stream_callback)
+            
+            return {
+                "success": result.success,
+                "results": result.output if result.success else None,
+                "raw_output": result.output,
+                "error": result.error if not result.success else None,
+                "exit_code": result.exit_code,
+                "elapsed_time": result.elapsed_time
+            }
+            
+        except Exception as e:
+            if stream_callback:
+                stream_callback(f"❌ Error: {str(e)}")
+            return {"success": False, "error": f"Execution error: {str(e)}"}
+    
     def execute_tool_streaming(self,
                               tool_name: str,
                               parameters: Dict[str, Any],
@@ -376,27 +443,11 @@ class ToolExecutor:
         start_time = datetime.utcnow()
         
         if stream_callback:
-            stream_callback(f"Starting execution of {tool_name}" + (f":{command_name}" if command_name else ""))
-            stream_callback(f"Parameters: {parameters}")
+            stream_callback(f"🔧 Starting {tool_name}" + (f":{command_name}" if command_name else ""))
         
         try:
-            # Execute via SpecExecutor directly
-            result = self._execute_via_specs_direct(tool_name, command_name, parameters)
-            
-            if stream_callback and result.get("raw_output"):
-                stream_callback("─" * 40)
-                for line in str(result["raw_output"]).split("\n")[:50]:
-                    if line.strip():
-                        stream_callback(line.strip())
-            
-            end_time = datetime.utcnow()
-            execution_time = (end_time - start_time).total_seconds()
-            
-            if stream_callback:
-                if result.get("success"):
-                    stream_callback(f"Execution completed successfully in {execution_time:.2f}s")
-                else:
-                    stream_callback(f"Execution failed: {result.get('error', 'Unknown error')}")
+            # Execute via SpecExecutor with real-time streaming
+            result = self._execute_via_specs_streaming(tool_name, command_name, parameters, stream_callback)
             
             # Add metadata
             execution_result = {
