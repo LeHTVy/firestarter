@@ -49,7 +49,8 @@ def safe_prompt_ask(prompt_text: str, default: Optional[str] = None) -> str:
         plain_prompt = "You"
     
     try:
-        return Prompt.ask(prompt_text, default=default)
+        result = Prompt.ask(prompt_text, default=default)
+        return str(result) if result is not None else ""
     except KeyboardInterrupt:
         raise
     except (UnicodeDecodeError, UnicodeError) as e:
