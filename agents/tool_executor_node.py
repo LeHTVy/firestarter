@@ -270,10 +270,17 @@ class ToolExecutorNode:
             with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TOOLS) as executor:
                 futures = {}
                 for subtask, tool_name in tool_tasks:
+                    # Create per-tool stream callback for concurrent execution
+                    def create_tool_callback(tn):
+                        def callback(tool, cmd, line):
+                            if self.stream_callback:
+                                self.stream_callback("tool_output", f"{tn}", line)
+                        return callback
+                    
                     future = executor.submit(
                         self._execute_single_tool,
                         state, subtask, tool_name, targets,
-                        None, None  # No streaming for concurrent execution
+                        None, create_tool_callback(tool_name)  # Pass tool callback for streaming
                     )
                     futures[future] = tool_name
                 

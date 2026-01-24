@@ -18,7 +18,7 @@ def get_specs() -> List[ToolSpec]:
             description="Fast subdomain discovery tool",
             executable_names=["subfinder"],
             install_hint="go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
-            aliases=["finder"],
+            aliases=["finder", "subdomain_discovery", "subdomain_enum", "subdomains"],
             commands={
                 "enum": CommandTemplate(
                     args=["-d", "{domain}", "-silent"],
@@ -42,7 +42,7 @@ def get_specs() -> List[ToolSpec]:
             description="In-depth subdomain enumeration",
             executable_names=["amass"],
             install_hint="go install github.com/owasp-amass/amass/v4/...@master",
-            aliases=["mass"],
+            aliases=["mass", "subdomain_bruteforce"],
             commands={
                 "passive": CommandTemplate(
                     args=["enum", "-passive", "-d", "{domain}"],
@@ -66,6 +66,7 @@ def get_specs() -> List[ToolSpec]:
             description="Domain/IP registration lookup",
             executable_names=["whois"],
             install_hint="apt install whois",
+            aliases=["whois_lookup", "domain_whois", "domain_info"],
             commands={
                 "lookup": CommandTemplate(
                     args=["{target}"],
@@ -85,6 +86,7 @@ def get_specs() -> List[ToolSpec]:
             description="DNS query tool",
             executable_names=["dig"],
             install_hint="apt install dnsutils",
+            aliases=["dns_enum", "dns_lookup", "dns_query", "dns_recon"],
             commands={
                 "any": CommandTemplate(args=["+short", "ANY", "{domain}"], timeout=30),
                 "mx": CommandTemplate(args=["+short", "MX", "{domain}"], timeout=30),
@@ -93,6 +95,7 @@ def get_specs() -> List[ToolSpec]:
                 "a": CommandTemplate(args=["+short", "A", "{domain}"], timeout=30),
             }
         ),
+        
         
         # ─────────────────────────────────────────────────────────
         # HTTPX - HTTP Probing
