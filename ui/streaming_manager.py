@@ -1,7 +1,7 @@
 """Streaming manager for coordinating live updates."""
 
 from typing import Dict, Optional, Callable, Any
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.layout import Layout
 from rich.panel import Panel
@@ -31,25 +31,15 @@ class StreamingManager:
     
     def start(self):
         """Start live display and keyboard listener."""
-        self.layout = Layout()
-        # Give models section more space and allow it to expand for long responses
-        self.layout.split_column(
-            Layout(name="progress", size=5),
-            Layout(name="tools", ratio=1),
-            Layout(name="models", ratio=3)  # Increased ratio for models to show full responses
-        )
-        
-        self.live = Live(self.layout, console=self.console, refresh_per_second=10)
+        self.live = Live(Panel("Initializing..."), console=self.console, refresh_per_second=10)
         self.live.start()
         self._update_display()
         
-        # Start keyboard listener for expand/collapse
         if self.enable_keyboard:
             self._start_keyboard_listener()
     
     def stop(self):
         """Stop live display and keyboard listener."""
-        # Stop keyboard listener
         if self.keyboard_listener:
             self.keyboard_listener.stop()
             self.keyboard_listener = None
@@ -139,7 +129,6 @@ class StreamingManager:
             Panel ID
         """
         panel_id = model_name
-        # Only create if doesn't exist
         if panel_id not in self.model_panels:
             self.model_panels[panel_id] = ModelResponsePanel(model_name=model_name)
         self._update_display()
@@ -175,9 +164,7 @@ class StreamingManager:
                         panel.toggle_expand()
                         self._update_display()
             elif key_lower == 't':  # Toggle
-                # Toggle the first model panel (or all if multiple)
                 if self.model_panels:
-                    # Toggle all panels
                     for panel_id in self.model_panels:
                         self.model_panels[panel_id].toggle_expand()
                     self._update_display()
@@ -248,29 +235,29 @@ class StreamingManager:
     
     def _update_display(self):
         """Update the live display."""
-        if not self.live or not self.layout:
+        if not self.live:
             return
         
-        # Build tools section
+        renderables = []
+        
+        # Progress
+        renderables.append(self.progress_panel.render())
+        
+        # Tools
         tool_panels_list = [panel.render() for panel in self.tool_panels.values()]
         if tool_panels_list:
-            from rich.console import Group as RichGroup
-            tools_content = RichGroup(*tool_panels_list)
+            renderables.append(Group(*tool_panels_list))
         else:
-            tools_content = Panel("[dim]No tools running...[/dim]", title="[cyan]Tools[/cyan]")
+            renderables.append(Panel("[dim]No tools running...[/dim]", title="[cyan]Tools[/cyan]"))
         
-        # Build models section
+        # Models
         model_panels_list = [panel.render() for panel in self.model_panels.values()]
         if model_panels_list:
-            from rich.console import Group as RichGroup
-            models_content = RichGroup(*model_panels_list)
+            renderables.append(Group(*model_panels_list))
         else:
-            models_content = Panel("[dim]No models active...[/dim]", title="[blue]Models[/blue]")
-        
-        # Update layout
-        self.layout["progress"].update(self.progress_panel.render())
-        self.layout["tools"].update(tools_content)
-        self.layout["models"].update(models_content)
+            renderables.append(Panel("[dim]No models active...[/dim]", title="[blue]Models[/blue]"))
+            
+        self.live.update(Group(*renderables))
     
     def clear(self):
         """Clear all panels."""

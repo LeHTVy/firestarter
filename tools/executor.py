@@ -450,6 +450,9 @@ class ToolExecutor:
             result = self._execute_via_specs_streaming(tool_name, command_name, parameters, stream_callback)
             
             # Add metadata
+            end_time = datetime.utcnow()
+            execution_time = (end_time - start_time).total_seconds()
+            
             execution_result = {
                 "execution_id": execution_id,
                 "tool_name": tool_name,

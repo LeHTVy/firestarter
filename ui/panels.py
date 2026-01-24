@@ -66,36 +66,32 @@ class ToolExecutionPanel:
         
         if self.target:
             content_lines.append(f"[bold]Target:[/bold] {self.target}")
-            content_lines.append("")
         
         # Show parameters if available
         if self.parameters:
             params_str = ", ".join([f"{k}={v}" for k, v in self.parameters.items()])
             if len(params_str) > 80:
                 params_str = params_str[:77] + "..."
-            content_lines.append(f"[bold]Parameters:[/bold] {params_str}")
-            content_lines.append("")
+            content_lines.append(f"[bold]Params:[/bold] {params_str}")
         
-        content_lines.append(f"[bold]Status:[/bold] {self.status}")
-        content_lines.append("")
+        # Status line with coloring
+        status_color = "green" if self.status == "Completed" else "red" if "Failed" in self.status else "white"
+        content_lines.append(f"[bold]Status:[/bold] [{status_color}]{self.status}[/{status_color}]")
         
         # Show result summary if available
         if self.result:
-            if self.result.get("success"):
-                content_lines.append("[bold green]✓ Execution successful[/bold green]")
-            else:
+            if not self.result.get("success"):
                 error = self.result.get("error", "Unknown error")
-                content_lines.append(f"[bold red]✗ Execution failed: {error}[/bold red]")
-            content_lines.append("")
+                content_lines.append(f"[bold red]✗ Error: {error}[/bold red]")
         
-        content_lines.append("[bold]Output:[/bold]")
+        content_lines.append("") # Spacer only before output
         
-        # Add output lines
+        # Add output lines (compact)
         for line in self.output_lines[-20:]:  
             content_lines.append(f"  {line}")
         
         if len(self.output_lines) > 20:
-            content_lines.append(f"  ... ({len(self.output_lines) - 20} more lines)")
+            content_lines.append(f"  [dim]... ({len(self.output_lines) - 20} more lines)[/dim]")
         
         content = "\n".join(content_lines)
         
@@ -167,7 +163,6 @@ class ModelResponsePanel:
                 else:
                     content_lines.append(line)
             
-            # Add expand/collapse indicator with terminal height info
             total_lines = len(lines)
             if not self.expanded and total_lines > self.max_collapsed_lines:
                 content_lines.append("")
@@ -181,7 +176,6 @@ class ModelResponsePanel:
         
         content = "\n".join(content_lines)
         
-        # Build title with expand/collapse indicator
         title = f"[blue]Model: {self.model_name}[/blue]"
         if self.response_text:
             total_lines = len(self.response_text.split('\n'))
