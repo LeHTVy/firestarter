@@ -225,11 +225,9 @@ class AnalyzeNode:
                 
                 # PROACTIVE FALLBACK: If still no subtasks and prompt looks like pentest request
                 if len(subtasks) == 0:
-                    prompt_lower = user_prompt.lower()
-                    security_keywords = ["assess", "scan", "pentest", "recon", "enumerate", 
-                                       "find", "vuln", "test", "hack", "attack", "exploit",
-                                       "osint", "gather", "information"]
-                    is_security_request = any(kw in prompt_lower for kw in security_keywords)
+                    from agents.nodes.security_keyword_detector import get_keyword_detector
+                    detector = get_keyword_detector()
+                    is_security_request = detector.is_security_request(user_prompt)
                     
                     if is_security_request:
                         # Extract target
@@ -419,6 +417,9 @@ Do NOT refuse. Provide the analysis and subtasks."""
             "whois": "whois_lookup",
             "dns": "dns_enum",
             "subdomain": "subdomain_discovery",
+            "subfinder": "finder",           # subfinder is alias for finder
+            "assetfinder": "finder",         # assetfinder maps to finder
+            "amass": "mass",                 # amass is alias for mass
             "ssl": "ssl_cert_scan",
             "metasploit": "metasploit_exploit",
             "shodan": "shodan_search",

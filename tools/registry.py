@@ -38,21 +38,19 @@ class ToolDefinition(BaseModel):
     priority: bool = False
     assigned_agents: List[str] = Field(default_factory=list)
     implementation: Optional[str] = None
-    # Legacy: single parameters schema (for backward compatibility)
     parameters: Optional[ToolSchema] = None
-    # New: commands structure (each command has its own parameters)
     commands: Optional[Dict[str, CommandDefinition]] = None
     risk_level: str
     requires_auth: bool = False
+    aliases: Optional[List[str]] = Field(default_factory=list)
     
-    # Extended metadata fields (from advice.txt)
-    capability: Optional[List[str]] = Field(default_factory=list)  # Tool làm được gì (port_scan, service_enum, etc.)
-    mode: Optional[List[str]] = Field(default_factory=list)  # passive/active/destructive
-    scope: Optional[List[str]] = Field(default_factory=list)  # network/host/web/cloud
-    legal_risk: Optional[str] = None  # low/medium/high (defaults to risk_level if not set)
-    cost: Optional[Dict[str, Any]] = Field(default_factory=dict)  # time, bandwidth estimates
-    permission_required: Optional[bool] = None  # Cần authorization không (defaults to requires_auth if not set)
-    evidence_output: Optional[List[str]] = Field(default_factory=list)  # logs, json, pcap
+    capability: Optional[List[str]] = Field(default_factory=list)
+    mode: Optional[List[str]] = Field(default_factory=list)
+    scope: Optional[List[str]] = Field(default_factory=list)
+    legal_risk: Optional[str] = None
+    cost: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    permission_required: Optional[bool] = None
+    evidence_output: Optional[List[str]] = Field(default_factory=list)
     
     def get_command(self, command_name: str) -> Optional[CommandDefinition]:
         """Get command definition by name.
@@ -109,27 +107,39 @@ class ToolRegistry:
         
         self.tools_file = tools_file
         self.tools: Dict[str, ToolDefinition] = {}
+        self._alias_map: Dict[str, str] = {}  # alias -> actual tool name
         self._load_tools()
     
     def _load_tools(self) -> None:
-        """Load tools from JSON file."""
+        """Load tools from JSON file and build alias map."""
         with open(self.tools_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         for tool_data in data.get('tools', []):
             tool = ToolDefinition(**tool_data)
             self.tools[tool.name] = tool
+            # Build alias -> tool name mapping
+            for alias in tool.aliases or []:
+                self._alias_map[alias.lower()] = tool.name
     
     def get_tool(self, name: str) -> Optional[ToolDefinition]:
-        """Get tool by name.
+        """Get tool by name or alias.
         
         Args:
-            name: Tool name
+            name: Tool name or alias
             
         Returns:
             Tool definition or None if not found
         """
-        return self.tools.get(name)
+        # Try exact match first
+        tool = self.tools.get(name)
+        if tool:
+            return tool
+        # Try alias (case-insensitive)
+        actual_name = self._alias_map.get(name.lower())
+        if actual_name:
+            return self.tools.get(actual_name)
+        return None
     
     def list_tools(self, 
                    category: Optional[str] = None,

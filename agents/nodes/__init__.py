@@ -5,12 +5,14 @@ from agents.nodes.analyze_node import AnalyzeNode
 from agents.nodes.recommend_tools_node import RecommendToolsNode
 from agents.nodes.synthesize_node import SynthesizeNode
 from agents.nodes.target_check_node import TargetCheckNode
-# DirectAnswerNode removed
+from agents.nodes.security_keyword_detector import SecurityKeywordDetector, get_keyword_detector
 
 __all__ = [
     "SubtaskCreator",
     "AnalyzeNode",
     "RecommendToolsNode",
     "SynthesizeNode",
-    "TargetCheckNode"
+    "TargetCheckNode",
+    "SecurityKeywordDetector",
+    "get_keyword_detector"
 ]
