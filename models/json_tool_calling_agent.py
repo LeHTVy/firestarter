@@ -249,11 +249,11 @@ class JSONToolCallingAgent:
             if tool_def.commands:
                 tool_info["commands"] = [
                     {
-                        "name": cmd.name,
-                        "description": cmd.description,
-                        "parameters": cmd.parameters.model_dump() if hasattr(cmd.parameters, 'model_dump') else cmd.parameters
+                        "name": cmd_name,
+                        "description": cmd_def.description,
+                        "parameters": cmd_def.parameters.model_dump() if hasattr(cmd_def.parameters, 'model_dump') else cmd_def.parameters
                     }
-                    for cmd in tool_def.commands
+                    for cmd_name, cmd_def in tool_def.commands.items()
                 ]
             tools_description.append(tool_info)
         

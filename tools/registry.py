@@ -118,9 +118,21 @@ class ToolRegistry:
         for tool_data in data.get('tools', []):
             tool = ToolDefinition(**tool_data)
             self.tools[tool.name] = tool
-            # Build alias -> tool name mapping
             for alias in tool.aliases or []:
                 self._alias_map[alias.lower()] = tool.name
+
+        try:
+            from tools.specs import get_all_specs
+            specs = get_all_specs()
+            for spec in specs:
+                if spec.name in self.tools:
+                    for alias in spec.aliases:
+                        self._alias_map[alias.lower()] = spec.name
+    
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"Warning: Failed to sync aliases from ToolSpecs: {e}")
     
     def get_tool(self, name: str) -> Optional[ToolDefinition]:
         """Get tool by name or alias.
