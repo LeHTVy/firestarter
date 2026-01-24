@@ -37,6 +37,28 @@ fi
 # Activate virtual environment (works with sudo if using same user's venv)
 source venv/bin/activate
 
+# Add Go tools to PATH (needed for subfinder, amass, nuclei, etc.)
+# Try common Go paths
+if [ -d "$HOME/go/bin" ]; then
+    export PATH="$HOME/go/bin:$PATH"
+fi
+
+# If running as root via sudo, get original user's Go path
+if [ "$SUDO_MODE" = true ] && [ -n "$SUDO_USER" ]; then
+    SUDO_USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    if [ -d "$SUDO_USER_HOME/go/bin" ]; then
+        export PATH="$SUDO_USER_HOME/go/bin:$PATH"
+    fi
+fi
+
+# Also check /usr/local/go/bin
+if [ -d "/usr/local/go/bin" ]; then
+    export PATH="/usr/local/go/bin:$PATH"
+fi
+
+# Ensure venv bin is in PATH for Python tools (theHarvester, bbot, etc.)
+export PATH="$SCRIPT_DIR/venv/bin:$PATH"
+
 # If running as root, ensure we use the venv's python
 if [ "$SUDO_MODE" = true ]; then
     # Use absolute path to venv python
