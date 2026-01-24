@@ -48,11 +48,10 @@ class JSONToolCallingAgent:
         """
         self.model_name = model_name
         self.config = load_config(config_path) if config_path else self._load_default_config()
-        
-        # Use GenericOllamaAgent for generating responses
+          
         self.llm_agent = GenericOllamaAgent(
             model_name=model_name,
-            prompt_template="json_tool_calling.jinja2"  # Will create this template
+            prompt_template="json_tool_calling.jinja2"  
         )
         
         self.registry = get_registry()
@@ -64,7 +63,6 @@ class JSONToolCallingAgent:
         try:
             self.system_prompt_template = self.env.get_template("json_tool_calling.jinja2")
         except:
-            # Fallback to functiongemma template if json_tool_calling doesn't exist
             self.system_prompt_template = self.env.get_template("functiongemma_system.jinja2")
     
     def _load_default_config(self) -> Dict[str, Any]:
@@ -233,7 +231,12 @@ class JSONToolCallingAgent:
             else:
                 tool_defs = self.registry.list_tools()
         else:
-            tool_defs = [self.registry.get_tool(t) for t in tools if self.registry.get_tool(t)]
+            # Filter out None values explicitly to prevent AttributeError
+            tool_defs = []
+            for t in tools:
+                tool_def = self.registry.get_tool(t)
+                if tool_def is not None:
+                    tool_defs.append(tool_def)
         
         # Format tools for prompt
         tools_description = []
