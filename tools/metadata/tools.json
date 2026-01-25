@@ -4575,7 +4575,8 @@
       "category": "vulnerability",
       "priority": true,
       "assigned_agents": [
-        "exploit_agent"
+        "exploit_agent",
+        "recon_agent"
       ],
       "parameters": {
         "type": "object",

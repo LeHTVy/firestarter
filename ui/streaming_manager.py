@@ -222,6 +222,12 @@ class StreamingManager:
             step: Step name
         """
         self.progress_panel.complete_step(step)
+        
+        if step == "Workflow completed":
+            # Force all steps to be completed visually
+            self.progress_panel.completed_steps = [f"Step {i}" for i in range(self.progress_panel.total_steps)]
+            self.progress_panel.current_step = "Completed"
+            
         self._update_display()
     
     def set_total_steps(self, total: int):
