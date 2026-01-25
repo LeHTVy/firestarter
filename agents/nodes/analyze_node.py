@@ -126,6 +126,8 @@ class AnalyzeNode:
                 history_lines.append(f"{role.upper()}: {content}")
             conversation_history_str = "\n".join(history_lines)
         
+        # Get session context for target information
+        session_context = self.context_manager.get_context(state.get("session_context"))
         if session_context and session_context.get_target():
             # Add target context to prompt
             target = session_context.get_target()
