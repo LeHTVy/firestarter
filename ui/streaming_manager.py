@@ -7,6 +7,7 @@ from rich.layout import Layout
 from rich.panel import Panel
 
 from ui.panels import ToolExecutionPanel, ModelResponsePanel, ProgressPanel
+from ui.components import TargetInfoCard, FindingCard, AnalysisCard
 from ui.keyboard_listener import KeyboardListener
 
 
@@ -23,6 +24,7 @@ class StreamingManager:
         self.console = console or Console()
         self.tool_panels: Dict[str, ToolExecutionPanel] = {}
         self.model_panels: Dict[str, ModelResponsePanel] = {}
+        self.info_panels: List[Panel] = []  # Store static info panels
         self.progress_panel = ProgressPanel()
         self.live: Optional[Live] = None
         self.layout: Optional[Layout] = None
@@ -240,6 +242,42 @@ class StreamingManager:
         """
         self.progress_panel.set_total_steps(total)
         self._update_display()
+
+    def show_target_info(self, domain: str, company_info: Dict[str, Any] = None):
+        """Show target information card.
+        
+        Args:
+            domain: Target domain
+            company_info: Optional company info
+        """
+        card = TargetInfoCard(self.console)
+        panel = card.render(domain, company_info)
+        self.info_panels.append(panel)
+        self._update_display()
+        
+    def show_finding(self, finding_type: str, data: Dict[str, Any], severity: str = None):
+        """Show finding card.
+        
+        Args:
+            finding_type: Type of finding
+            data: Finding data
+            severity: Severity level
+        """
+        card = FindingCard(self.console)
+        panel = card.render(finding_type, data, severity)
+        self.info_panels.append(panel)
+        self._update_display()
+        
+    def show_analysis(self, analysis: Dict[str, Any]):
+        """Show analysis results card.
+        
+        Args:
+            analysis: Analysis data
+        """
+        card = AnalysisCard(self.console)
+        panel = card.render(analysis)
+        self.info_panels.append(panel)
+        self._update_display()
     
     def _update_display(self):
         """Update the live display."""
@@ -247,6 +285,15 @@ class StreamingManager:
             return
         
         renderables = []
+        
+        # Helper to limit displayed panels to avoid screen overflow
+        def get_recent(panels, count=3):
+            return panels[-count:] if len(panels) > count else panels
+        
+        # Target Info & Static Panels (Show all, or maybe just recent?)
+        # For now, show all as they are important context
+        if self.info_panels:
+            renderables.append(Group(*self.info_panels))
         
         # Progress
         renderables.append(self.progress_panel.render())
@@ -271,6 +318,7 @@ class StreamingManager:
         """Clear all panels."""
         self.tool_panels.clear()
         self.model_panels.clear()
+        self.info_panels.clear()
         self.progress_panel = ProgressPanel()
         self._update_display()
     

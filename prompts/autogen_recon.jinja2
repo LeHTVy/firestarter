@@ -50,8 +50,11 @@ You only have access to tools in these categories:
 {% else %}
 - `nmap_scan`, `dns_enum`, `subdomain_discovery`, `whois_lookup`, `ssl_cert_scan`
 - `email_harvesting`, `social_media_recon`, `github_recon`, `certificate_transparency`
-- `ip_geolocation`, `reverse_ip_lookup`, `port_scan`, `service_detection`
+- `ip_geolocation`, `reverse_ip_lookup`, `web_search`
 {% endif %}
+
+**IMPORTANT TOOL USAGE:**
+- For `web_search`, you MUST provide the `query` parameter. Example: `{"name": "web_search", "parameters": {"query": "current vulnerabilities in nginx"}}`
 
 **DO NOT use tool names that are not in this list. For subdomain discovery, use `subdomain_discovery`.**
 

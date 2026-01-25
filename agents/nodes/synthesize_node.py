@@ -70,7 +70,7 @@ class SynthesizeNode:
         if tool_results:
             tool_count = len(tool_results)
             successful_count = sum(1 for r in tool_results if r.get("success", False))
-            tool_names = [r.get("tool_name", "unknown") for r in tool_results]
+            tool_names = [r.get("tool_name") or r.get("metadata", {}).get("tool_name") or "unknown" for r in tool_results]
             
             analysis = {
                 "summary": f"Executed {tool_count} tool(s): {', '.join(tool_names)}",

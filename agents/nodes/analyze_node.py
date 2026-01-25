@@ -320,6 +320,13 @@ class AnalyzeNode:
                 # Update session context with analysis
                 if session_context:
                     state["session_context"] = session_context.to_dict()
+                
+                # Stream analysis card
+                if self.stream_callback and state.get("analysis"):
+                    analysis_display = state["analysis"].copy()
+                    if subtasks:
+                        analysis_display["subtasks"] = subtasks
+                    self.stream_callback("analysis_result", "analyze_node", analysis_display)
             else:
                 # Invalid structure - treat as failure
                 if self.stream_callback:

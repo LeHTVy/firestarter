@@ -1024,6 +1024,12 @@ Return only valid JSON:"""
             ClarificationMessages.FOUND_FROM_DB.format(domain=candidate.domain)
         )
         
+        # Stream target info card
+        self._stream("target_info", "clarify_target", {
+            "domain": candidate.domain,
+            "company_info": {"additional_info": f"Found from {candidate.source} with {int(candidate.confidence*100)}% confidence"}
+        })
+        
         return state
     
     def _handle_multiple_candidates(
@@ -1085,6 +1091,13 @@ Return only valid JSON:"""
         state["final_answer"] = message
         
         self._stream("state_update", "clarify_target", None)
+        
+        # Stream target info card
+        self._stream("target_info", "clarify_target", {
+            "domain": entity_info.domain,
+            "company_info": entity_info.to_dict()
+        })
+        
         self._stream("model_response", "system", message)
         
         # Mark as resolved

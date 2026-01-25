@@ -430,6 +430,15 @@ Extract parameters from context and execute the tool."""
                     findings[key] = results[key]
             
             if findings:
+                # Stream findings
+                if self.stream_callback:
+                    for key, value in findings.items():
+                        self.stream_callback("finding", "tool_executor", {
+                            "type": key,
+                            "data": {key: value} if not isinstance(value, dict) else value,
+                            "severity": "info"
+                        })
+
                 self.memory_manager.update_agent_context(findings)
                 self.context_manager.update_context(findings)
     
