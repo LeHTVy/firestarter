@@ -135,7 +135,7 @@ class AnalyzeNode:
             
         #Inject Agent Context Summary so model knows what is in RAM
         if self.memory_manager.session_memory:
-            context_summary = self.memory_manager.agent_context.get_summary()
+            context_summary = self.memory_manager.session_memory.agent_context.get_summary()
             # Only add if there are actual findings
             if "No findings" not in context_summary:
                 conversation_history_str = (
