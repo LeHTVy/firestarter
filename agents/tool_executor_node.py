@@ -263,8 +263,15 @@ class ToolExecutorNode:
                 )
                 if result:
                     tool_results.append(result)
-                    self._store_result(result, state)
+                    summary = self._store_result(result, state)
                     self._track_feedback(result, tool_name, state)
+                    
+                    if self.stream_callback:
+                        status = "✅" if result.get("success") else "❌"
+                        msg = f"{status} {tool_name} completed"
+                        if summary:
+                            msg += f" ({summary})"
+                        self.stream_callback("model_response", "system", msg)
         else:
             # Multiple tools - run concurrently
             if self.stream_callback:
@@ -294,12 +301,14 @@ class ToolExecutorNode:
                         result = future.result()
                         if result:
                             tool_results.append(result)
-                            self._store_result(result, state)
+                            summary = self._store_result(result, state)
                             self._track_feedback(result, tool_name, state)
                             if self.stream_callback:
                                 status = "✅" if result.get("success") else "❌"
-                                self.stream_callback("model_response", "system",
-                                    f"{status} {tool_name} completed")
+                                msg = f"{status} {tool_name} completed"
+                                if summary:
+                                    msg += f" ({summary})"
+                                self.stream_callback("model_response", "system", msg)
                     except Exception as e:
                         if self.stream_callback:
                             self.stream_callback("model_response", "system",
@@ -413,36 +422,56 @@ Extract parameters from context and execute the tool."""
             targets.insert(0, verified_target)
             
         # [DYNAMIC MEMORY RESOLUTION]
-        # Check for keywords implying memory-based targeting
-        user_prompt_lower = state.get("user_prompt", "").lower()
+        # Generic resolution of memory targets based on keywords
         if self.memory_manager and self.memory_manager.session_memory:
-            agent_context = self.memory_manager.session_memory.agent_context
-            
-            # "subdomains" keyword
-            if "subdomain" in user_prompt_lower or "findings" in user_prompt_lower:
-                if agent_context.subdomains:
-                    # Append known subdomains
-                    for sub in agent_context.subdomains:
-                        if sub not in targets:
-                            targets.append(sub)
-                    
-                    if self.stream_callback:
-                        self.stream_callback("model_response", "system", 
-                            f"🔄 Resolved {len(agent_context.subdomains)} subdomains from memory.")
-            
-            # "open ports" or "services" keyword -> might need IP targeting
-            if "port" in user_prompt_lower and "scan" not in user_prompt_lower:
-                # If identifying open ports, we target the hosts that have them
-                hosts_with_ports = set(p.get("host") for p in agent_context.open_ports if p.get("host"))
-                for host in hosts_with_ports:
-                    if host not in targets:
-                        targets.append(host)
+            self._resolve_memory_targets(state.get("user_prompt", ""), targets)
         
         return targets
-    
-    def _store_result(self, result: Dict, state: Dict) -> None:
-        """Store tool result."""
 
+        
+
+    def _resolve_memory_targets(self, prompt: str, targets: List[str]) -> None:
+        """Resolve targets from memory based on prompt keywords."""
+        prompt_lower = prompt.lower()
+        agent_context = self.memory_manager.session_memory.agent_context
+        
+        # Mapping: keyword -> (context_field, context_attribute)
+        # We check if keyword exists in prompt, then fetch data from context
+        mappings = [
+            (["subdomain", "finding", "asset"], "subdomains"),
+            (["open port", "service"], "open_ports"), 
+            (["ip", "address"], "ips")
+        ]
+        
+        for keywords, field in mappings:
+            if any(k in prompt_lower for k in keywords):
+                data = getattr(agent_context, field, [])
+                if not data:
+                    continue
+                    
+                count = 0
+                if field == "open_ports":
+                    # Special handling for ports: get hosts
+                    hosts = set(p.get("host") for p in data if p.get("host"))
+                    for h in hosts:
+                        if h not in targets:
+                            targets.append(h)
+                            count += 1
+                else:
+                    # Standard list of strings
+                    for item in data:
+                        if isinstance(item, str) and item not in targets:
+                            targets.append(item)
+                            count += 1
+                
+                if count > 0 and self.stream_callback:
+                    self.stream_callback("model_response", "system", 
+                        f"🔄 Resolved {count} {field} from memory.")
+
+    def _store_result(self, result: Dict, state: Dict) -> str:
+        """Store tool result and return summary string."""
+        summary = ""
+        
         self.results_storage.store_result(
             tool_name=result.get("tool_name", ""),
             parameters=result.get("parameters", {}),
@@ -460,7 +489,11 @@ Extract parameters from context and execute the tool."""
             findings = {}
             for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies"]:
                 if key in results:
-                    findings[key] = results[key]
+                    data = results[key]
+                    if data:
+                        findings[key] = data
+                        count = len(data) if isinstance(data, list) else 1
+                        summary += f"Found {count} {key}. "
             
             if findings:
                 # Stream findings
@@ -474,6 +507,8 @@ Extract parameters from context and execute the tool."""
 
                 self.memory_manager.update_agent_context(findings)
                 self.context_manager.update_context(findings)
+                
+        return summary.strip()
     
     def _track_feedback(self, result: Dict, tool_name: str, state: Dict) -> None:
         """Track execution feedback."""
@@ -526,6 +561,13 @@ Extract parameters from context and execute the tool."""
             return None
         
         def callback(tool_name: str, command: str, line: str):
+            # Standard tool output stream
             self.stream_callback("tool_output", 
                 f"{tool_name}:{command}" if command else tool_name, line)
+            
+            # [TRUST FIX] Mirror to model_response for immediate visibility
+            # Use 'tool_log' type which should be rendered as a log stream
+            prefix = f"[{tool_name}] " 
+            if line:
+                 self.stream_callback("model_response", "tool_stdout", prefix + line)
         return callback
