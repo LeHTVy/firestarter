@@ -50,7 +50,7 @@ class SynthesizeNode:
         tool_results = state.get("tool_results", [])
         
         if not tool_results and self.memory_manager:
-            intent = state.get("intent_classification", {})
+            intent = state.get("intent_classification") or {}
             user_prompt = state.get("user_prompt", "")
             
             is_memory_query = intent.get("intent_type") == "memory_query"

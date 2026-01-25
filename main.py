@@ -348,7 +348,7 @@ def main():
                 for i, conv in enumerate(conversations, 1):
                     title = conv.get("title") or "Untitled"
                     conv_id = conv.get("id")
-                    updated = conv.get("updated_at", "")[:10] if conv.get("updated_at") else ""
+                    updated = str(conv.get("updated_at", ""))[:10] if conv.get("updated_at") else ""
                     console.print(f"  {i}. {title} ({conv_id[:8]}...) - Updated: {updated}")
                 
                 try:
