@@ -408,9 +408,7 @@ Extract parameters from context and execute the tool."""
     
     def _store_result(self, result: Dict, state: Dict) -> None:
         """Store tool result."""
-        if not result.get("success"):
-            return
-        
+
         self.results_storage.store_result(
             tool_name=result.get("tool_name", ""),
             parameters=result.get("parameters", {}),

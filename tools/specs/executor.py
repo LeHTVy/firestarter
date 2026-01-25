@@ -305,6 +305,8 @@ class SpecExecutor:
                             stream_callback(line)
                     else:
                         error_lines.append(line)
+                        if stream_callback and line:
+                            stream_callback(f"[stderr] {line}")
                 except queue.Empty:
                     continue
             

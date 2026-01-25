@@ -59,6 +59,13 @@ User question:
 {{ user_question }}
 {% endif %}
 
+## Handling Tool Failures:
+If the retrieved results show errors (timeout, exit code != 0, or "success": false):
+1.  **Acknowledge the attempt**: "I attempted to run [Tool Name]..."
+2.  **State the failure**: "...but it failed due to [Error/Timeout]."
+3.  **Do not hallucinate**: Do not say "no results found" as if the tool ran successfully. Say "the tool count not complete".
+4.  **Suggest alternatives**: Recommend running with different parameters or trying a different tool.
+
 {% if retrieved_results %}
 Retrieved from Memory:
 {% if retrieved_results is mapping and retrieved_results.get('tool_results') %}
