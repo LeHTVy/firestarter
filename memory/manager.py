@@ -322,6 +322,12 @@ class MemoryManager:
         
         # Persist agent state (PostgreSQL + Redis)
         self._persist_agent_context()
+        
+        # Automatic summarization for long conversations
+        try:
+            self.summary_compressor.auto_compress_if_needed(conv_id)
+        except Exception as e:
+            print(f"Summarization error: {e}")
     
     # ==================== Context Retrieval ====================
     

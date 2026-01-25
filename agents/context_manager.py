@@ -210,23 +210,31 @@ class ContextManager:
         """
         self._memory_manager = memory_manager
     
-    def get_context(self, state: Optional[Dict[str, Any]] = None) -> SessionContext:
+    def get_context(self, state: Optional[Dict[str, Any]] = None, conversation_id: Optional[str] = None) -> SessionContext:
         """
         Get current session context.
         
         Args:
             state: Optional state dictionary to extract context from
+            conversation_id: Optional UUID to load persisted context
             
         Returns:
             SessionContext instance
         """
-        if state:
+        if state and state.get("session_context"):
             # Extract from state
-            return SessionContext.from_dict(state.get("context", {}))
+            return SessionContext.from_dict(state.get("session_context"))
         
         if self._session_context:
             return self._session_context
         
+        # Try to load from memory manager if conversation_id provided
+        if conversation_id and self._memory_manager:
+            verified_target = self._memory_manager.get_verified_target(conversation_id=conversation_id)
+            if verified_target:
+                self._session_context = SessionContext(target_domain=verified_target)
+                return self._session_context
+
         # Create new context
         self._session_context = SessionContext()
         return self._session_context

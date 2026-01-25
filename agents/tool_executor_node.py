@@ -129,7 +129,11 @@ class ToolExecutorNode:
     
     def _get_target(self, state: Dict[str, Any]) -> Optional[str]:
         """Get target from session context or state."""
-        session_context = self.context_manager.get_context(state.get("session_context"))
+        conversation_id = state.get("conversation_id") or state.get("session_id")
+        session_context = self.context_manager.get_context(
+            state.get("session_context"), 
+            conversation_id=conversation_id
+        )
         if session_context:
             return session_context.get_target()
         return None

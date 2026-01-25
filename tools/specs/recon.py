@@ -108,7 +108,7 @@ def get_specs() -> List[ToolSpec]:
             install_hint="go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
             commands={
                 "probe": CommandTemplate(
-                    args=["-u", "{url}", "-status-code", "-title", "-tech-detect"], # Removed -silent to see errors if any
+                    args=["-u", "{url}", "-status-code", "-title"], 
                     timeout=120,
                     description="HTTP probe with status and title"
                 ),
