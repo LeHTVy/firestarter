@@ -144,6 +144,14 @@ class AnalyzeNode:
                 new_context = context_mgr.create_context({"target_domain": target})
                 state["session_context"] = new_context.to_dict()
             
+            # Explicitly save verified target
+            if conversation_id:
+                self.memory_manager.save_verified_target(
+                    conversation_id=conversation_id,
+                    domain=target,
+                    structured_info={"domain": target, "confidence": 1.0}
+                )
+            
             # Create subtasks for each tool
             subtasks = []
             for i, tool_name in enumerate(tool_names):
@@ -408,6 +416,14 @@ Do NOT refuse. Provide the analysis and subtasks."""
             
             # If we have a target but no subtasks → user wants security assessment
             if target:
+                # PERSISTENCE FIX: Explicitly save verified target
+                if conversation_id:
+                    self.memory_manager.save_verified_target(
+                        conversation_id=conversation_id,
+                        domain=target,
+                        structured_info={"domain": target, "confidence": 0.9}
+                    )
+
                 if self.stream_callback:
                     self.stream_callback("model_response", "system", 
                         f"🚀 [PATH B: FALLBACK] Target detected: {target}. Creating proactive plan...")

@@ -64,6 +64,14 @@ class MemoryManager:
         # Short-term buffer (Redis)
         self.redis_buffer = RedisBuffer()
         
+        # Session Processor (Structured Memory)
+        from memory.session import SessionProcessor
+        self.session_processor = SessionProcessor(
+            redis_buffer=self.redis_buffer,
+            conversation_store=self.conversation_store,
+            vector_store=self.conversation_retriever.vector_store
+        )
+        
         # Current conversation/session
         self.conversation_id: Optional[str] = None
         self.session_id: Optional[str] = None  # Legacy support
@@ -271,33 +279,21 @@ class MemoryManager:
         session = session_id or self.session_id or self.get_or_create_session()
         domain = context.get("target_domain") if context else self.target_domain
         
+        # Save to all memory layers via SessionProcessor (Structured Breakdown)
         try:
+            self.session_processor.process_and_save(
+                user_input=user_message,
+                model_response=assistant_message,
+                tool_outputs=[], # TODO: Pass actual tool outputs if available in save_turn signature
+                context={"conversation_id": conv_id, "session_id": session}
+            )
+        except Exception as e:
+            print(f"SessionProcessor error: {e}")
+            # Fallback to legacy save
             self.conversation_store.add_message(conv_id, "user", user_message)
             self.conversation_store.add_message(conv_id, "assistant", assistant_message)
-            # Auto-compress if needed
-            self.summary_compressor.auto_compress_if_needed(conv_id)
-        except Exception:
-            # Fallback to legacy in-memory buffer
-            self.add_to_conversation_buffer(session, "user", user_message, conversation_id=conv_id)
-            self.add_to_conversation_buffer(session, "assistant", assistant_message, conversation_id=conv_id)
-        
-        # Save to Redis buffer (short-term memory)
-        try:
-            self.redis_buffer.add_message(conv_id, "user", user_message)
-            self.redis_buffer.add_message(conv_id, "assistant", assistant_message)
-        except Exception:
-            pass  # Non-critical, Redis is optional
-        
-        # Save to Vector DB for semantic search (long-term memory)
-        # Use conversation_id for namespace isolation
-        messages = [
-            {"role": "user", "content": user_message},
-            {"role": "assistant", "content": assistant_message}
-        ]
-        # TODO: Update to use conversation_id when ConversationRetriever is updated
-        self.conversation_retriever.add_conversation(messages, session_id=conv_id)  # Using conv_id as session_id for now
-        
-        # Update session memory
+
+        # Update session memory (Agent Context)
         if self.session_memory:
             if tools_used:
                 for tool in tools_used:
@@ -325,18 +321,7 @@ class MemoryManager:
                     self.session_memory.agent_context.add_topics(topics)
         
         # Persist agent state (PostgreSQL + Redis)
-        if self.session_memory:
-            try:
-                state_data = {
-                    "session_memory": self.session_memory.to_dict(),
-                    "agent_context": self.session_memory.agent_context.to_dict()
-                }
-                # Save to PostgreSQL (persistent)
-                self.namespace_manager.save_agent_state(conv_id, "session_memory", state_data)
-                # Save to Redis (short-term, faster access)
-                self.redis_buffer.set_state(conv_id, "agent_context", self.session_memory.agent_context.to_dict())
-            except Exception:
-                pass  # Non-critical
+        self._persist_agent_context()
     
     # ==================== Context Retrieval ====================
     

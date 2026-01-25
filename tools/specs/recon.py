@@ -46,7 +46,7 @@ def get_specs() -> List[ToolSpec]:
             commands={
                 "passive": CommandTemplate(
                     args=["enum", "-passive", "-d", "{domain}"],
-                    timeout=600,
+                    timeout=1200,  # Increased timeout
                     description="Passive subdomain enumeration"
                 ),
                 "active": CommandTemplate(
@@ -108,8 +108,8 @@ def get_specs() -> List[ToolSpec]:
             install_hint="go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
             commands={
                 "probe": CommandTemplate(
-                    args=["-u", "{url}", "-silent", "-status-code", "-title"],
-                    timeout=60,
+                    args=["-u", "{url}", "-status-code", "-title", "-tech-detect"], # Removed -silent to see errors if any
+                    timeout=120,
                     description="HTTP probe with status and title"
                 ),
             }
@@ -126,12 +126,12 @@ def get_specs() -> List[ToolSpec]:
             install_hint="go install github.com/projectdiscovery/katana/cmd/katana@latest",
             commands={
                 "crawl": CommandTemplate(
-                    args=["-u", "{url}", "-silent", "-d", "3"],
+                    args=["-u", "{url}", "-d", "3"],
                     timeout=300,
                     description="Deep crawl"
                 ),
                 "js": CommandTemplate(
-                    args=["-u", "{url}", "-silent", "-jc", "-d", "2"],
+                    args=["-u", "{url}", "-jc", "-d", "2"],
                     timeout=300,
                     description="JavaScript discovery"
                 ),
@@ -145,13 +145,13 @@ def get_specs() -> List[ToolSpec]:
             name="theHarvester",
             category=ToolCategory.RECON,
             description="OSINT tool for email and subdomain harvesting",
-            executable_names=["theHarvester", "theharvester"],
+            executable_names=["theHarvester", "theharvester", "python3 -m theHarvester"], 
             install_hint="pip install theHarvester",
             aliases=["harvester", "email_harvester", "theharvester", "email_harvesting"],
             commands={
                 "enum": CommandTemplate(
                     args=["-d", "{domain}", "-b", "all"],
-                    timeout=180,
+                    timeout=300,
                     description="Harvest emails and subdomains from all sources"
                 ),
                 "quick": CommandTemplate(
