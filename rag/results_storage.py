@@ -184,12 +184,13 @@ class ToolResultsStorage:
         
         # Post-processing: Prioritize successful results if available
         if results:
-            successful_results = [doc for doc in results if doc.metadata.get("success", False)]
-            failed_results = [doc for doc in results if not doc.metadata.get("success", False)]
+            def is_success(doc):
+                if isinstance(doc, dict):
+                    return doc.get("metadata", {}).get("success", False)
+                return getattr(doc, "metadata", {}).get("success", False)
             
-            # If we have successful results, they should be prioritized
-            # But don't discard failed ones entirely as they might be relevant (e.g. "why did it fail")
-            # For now, simplistic reordering: success first
+            successful_results = [doc for doc in results if is_success(doc)]
+            failed_results = [doc for doc in results if not is_success(doc)]
             results = successful_results + failed_results
             
             # Truncate back to initial_k if needed

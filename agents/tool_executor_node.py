@@ -411,6 +411,32 @@ Extract parameters from context and execute the tool."""
         
         if verified_target and verified_target not in targets:
             targets.insert(0, verified_target)
+            
+        # [DYNAMIC MEMORY RESOLUTION]
+        # Check for keywords implying memory-based targeting
+        user_prompt_lower = state.get("user_prompt", "").lower()
+        if self.memory_manager and self.memory_manager.session_memory:
+            agent_context = self.memory_manager.session_memory.agent_context
+            
+            # "subdomains" keyword
+            if "subdomain" in user_prompt_lower or "findings" in user_prompt_lower:
+                if agent_context.subdomains:
+                    # Append known subdomains
+                    for sub in agent_context.subdomains:
+                        if sub not in targets:
+                            targets.append(sub)
+                    
+                    if self.stream_callback:
+                        self.stream_callback("model_response", "system", 
+                            f"🔄 Resolved {len(agent_context.subdomains)} subdomains from memory.")
+            
+            # "open ports" or "services" keyword -> might need IP targeting
+            if "port" in user_prompt_lower and "scan" not in user_prompt_lower:
+                # If identifying open ports, we target the hosts that have them
+                hosts_with_ports = set(p.get("host") for p in agent_context.open_ports if p.get("host"))
+                for host in hosts_with_ports:
+                    if host not in targets:
+                        targets.append(host)
         
         return targets
     
