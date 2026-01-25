@@ -347,3 +347,15 @@ class StreamingManager:
         def callback(chunk: str):
             self.stream_model_response(panel_id, chunk)
         return callback
+
+
+# Global instance
+_streaming_manager: Optional[StreamingManager] = None
+
+
+def get_streaming_manager(console: Optional[Console] = None) -> StreamingManager:
+    """Get global streaming manager instance."""
+    global _streaming_manager
+    if _streaming_manager is None:
+        _streaming_manager = StreamingManager(console)
+    return _streaming_manager
