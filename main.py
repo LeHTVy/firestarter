@@ -149,20 +149,7 @@ def main():
             elif event_type == "state_update":
                 # State update
                 streaming_manager.update_progress(f"Node: {event_name}")
-            elif event_type == "target_info":
-                # Target information
-                domain = event_data.get("domain")
-                company_info = event_data.get("company_info")
-                streaming_manager.show_target_info(domain, company_info)
-            elif event_type == "finding":
-                # Finding discovered
-                finding_type = event_data.get("type", "Finding")
-                data = event_data.get("data", {})
-                severity = event_data.get("severity")
-                streaming_manager.show_finding(finding_type, data, severity)
-            elif event_type == "analysis_result":
-                # Analysis result
-                streaming_manager.show_analysis(event_data)
+                pass
         except Exception as e:
 
             pass
