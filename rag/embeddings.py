@@ -20,9 +20,7 @@ class NemotronEmbeddings:
         
         # Auto-detect if default model is missing
         try:
-            # from utils.ollama_helper import check_model_exists, get_model_names
             if not check_model_exists(model_name):
-                # print(f"⚠️  Embedding model '{model_name}' not found.")
                 available = get_model_names()
                 
                 # Try to find a suitable substitute

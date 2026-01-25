@@ -373,6 +373,14 @@ Extract parameters from context and execute the tool."""
             if ports:
                 params["ports"] = ",".join(ports[:10])
         
+        # Special handling for web_search
+        if tool_name == "web_search" and "query" not in params:
+            # Generate a default query from target
+            if targets:
+                params["query"] = f"vulnerabilities in {targets[0]}"
+            else:
+                params["query"] = f"security vulnerabilities {description}"
+        
         # Execute with streaming
         if tool_stream_callback:
             def callback(line: str):
@@ -413,6 +421,7 @@ Extract parameters from context and execute the tool."""
             tool_name=result.get("tool_name", ""),
             parameters=result.get("parameters", {}),
             results=result.get("results"),
+            success=result.get("success", False),  # Pass success status
             agent=state.get("selected_agent"),
             session_id=state.get("conversation_id") or state.get("session_id"),
             conversation_id=state.get("conversation_id"),

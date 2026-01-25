@@ -66,6 +66,14 @@ If the retrieved results show errors (timeout, exit code != 0, or "success": fal
 3.  **Do not hallucinate**: Do not say "no results found" as if the tool ran successfully. Say "the tool count not complete".
 4.  **Suggest alternatives**: Recommend running with different parameters or trying a different tool.
 
+{% if retrieved_results.session_memory and retrieved_results.session_memory.agent_context %}
+## Current Session State (RAM):
+Target: {{ retrieved_results.session_memory.agent_context.domain }}
+Subdomains Found: {{ retrieved_results.session_memory.agent_context.subdomains | length }}
+Open Ports: {{ retrieved_results.session_memory.agent_context.open_ports | length }}
+Vulnerabilities: {{ retrieved_results.session_memory.agent_context.vulnerabilities | length }}
+{% endif %}
+
 {% if retrieved_results %}
 Retrieved from Memory:
 {% if retrieved_results is mapping and retrieved_results.get('tool_results') %}

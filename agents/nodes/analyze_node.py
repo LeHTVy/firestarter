@@ -126,12 +126,21 @@ class AnalyzeNode:
                 history_lines.append(f"{role.upper()}: {content}")
             conversation_history_str = "\n".join(history_lines)
         
-        # Get session context for target information
-        session_context = self.context_manager.get_context(state.get("session_context"))
         if session_context and session_context.get_target():
             # Add target context to prompt
             target = session_context.get_target()
             user_prompt = f"{user_prompt}\n\nCurrent target: {target}"
+            
+        #Inject Agent Context Summary so model knows what is in RAM
+        if self.memory_manager.session_memory:
+            context_summary = self.memory_manager.agent_context.get_summary()
+            # Only add if there are actual findings
+            if "No findings" not in context_summary:
+                conversation_history_str = (
+                    (conversation_history_str or "") + 
+                    f"\n\n[SYSTEM MEMORY STATE]\n{context_summary}\n"
+                    "Use this memory state to answer questions about previous findings."
+                )
         
         # PROACTIVE: Check if this is a direct tool execution command
         tool_execution_match = self._detect_direct_tool_command(user_prompt)

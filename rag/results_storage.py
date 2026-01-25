@@ -49,9 +49,10 @@ class ToolResultsStorage:
                     tool_name: str,
                     parameters: Dict[str, Any],
                     results: Any,
-                    agent: Optional[str] = None,
-                    session_id: Optional[str] = None,
-                    conversation_id: Optional[str] = None,
+            success: bool = True,  
+            agent: Optional[str] = None,
+            session_id: Optional[str] = None,
+            conversation_id: Optional[str] = None,
                     execution_id: Optional[str] = None) -> str:
         """Store tool execution result.
         
@@ -91,7 +92,8 @@ class ToolResultsStorage:
             "type": "tool_result",
             "execution_id": doc_id,
             "result_size": result_size,
-            "has_summary": summary is not None
+            "has_summary": summary is not None,
+            "success": success  # Store success status
         }
         
         # Add summary metadata if available
@@ -176,7 +178,22 @@ class ToolResultsStorage:
         
         # Get initial results from vector search (get more than k for ranking)
         initial_k = k * 3 if use_ranking else k
+        
+        # Execute search
         results = vectorstore.similarity_search(query, k=initial_k, filter=filter_dict)
+        
+        # Post-processing: Prioritize successful results if available
+        if results:
+            successful_results = [doc for doc in results if doc.metadata.get("success", False)]
+            failed_results = [doc for doc in results if not doc.metadata.get("success", False)]
+            
+            # If we have successful results, they should be prioritized
+            # But don't discard failed ones entirely as they might be relevant (e.g. "why did it fail")
+            # For now, simplistic reordering: success first
+            results = successful_results + failed_results
+            
+            # Truncate back to initial_k if needed
+            results = results[:initial_k]
         
         # Apply ranking if enabled
         if use_ranking and results:
