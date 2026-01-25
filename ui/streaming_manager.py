@@ -31,11 +31,13 @@ class StreamingManager:
     
     def start(self):
         """Start live display and keyboard listener."""
-        self.live = Live(Panel("Initializing..."), console=self.console, refresh_per_second=10)
-        self.live.start()
+        if self.live is None:
+            self.live = Live(Panel("Initializing..."), console=self.console, refresh_per_second=10)
+            self.live.start()
+        
         self._update_display()
         
-        if self.enable_keyboard:
+        if self.enable_keyboard and not self.keyboard_listener:
             self._start_keyboard_listener()
     
     def stop(self):

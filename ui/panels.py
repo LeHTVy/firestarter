@@ -28,7 +28,7 @@ class ToolExecutionPanel:
         self.parameters = parameters or {}
         self.output_lines: List[str] = []
         self.status = "Initializing..."
-        self.max_lines = 50  # Limit output lines to prevent overflow
+        self.max_lines = 200  
         self.result: Optional[Dict[str, Any]] = None  
         
     def update_status(self, status: str):
@@ -84,14 +84,13 @@ class ToolExecutionPanel:
                 error = self.result.get("error", "Unknown error")
                 content_lines.append(f"[bold red]✗ Error: {error}[/bold red]")
         
-        content_lines.append("") # Spacer only before output
-        
-        # Add output lines (compact)
-        for line in self.output_lines[-20:]:  
+        content_lines.append("") 
+        display_count = 60
+        for line in self.output_lines[-display_count:]:  
             content_lines.append(f"  {line}")
         
-        if len(self.output_lines) > 20:
-            content_lines.append(f"  [dim]... ({len(self.output_lines) - 20} more lines)[/dim]")
+        if len(self.output_lines) > display_count:
+            content_lines.append(f"  [dim]... ({len(self.output_lines) - display_count} more lines)[/dim]")
         
         content = "\n".join(content_lines)
         
