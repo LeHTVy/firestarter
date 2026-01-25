@@ -54,6 +54,22 @@ class ToolSpec:
                 self.executable_path = path
                 self.is_available = True
                 return True
+        
+        # Fallback: Check if it's a python package
+        if "python" in self.install_hint.lower():
+            try:
+                import importlib.util
+                # Try name variants
+                for name in [self.name] + self.executable_names:
+                    # heuristic: standard package names don't usually have spaces or args
+                    clean_name = name.split()[0].split('-')[-1] # e.g. "python3 -m theHarvester" -> "theHarvester"
+                    if importlib.util.find_spec(clean_name):
+                        self.is_available = True
+                        # Don't set executable_path, signals to use -m
+                        return True
+            except ImportError:
+                pass
+                
         return False
 
 

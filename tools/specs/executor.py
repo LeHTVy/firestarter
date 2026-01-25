@@ -115,7 +115,21 @@ class SpecExecutor:
         
         # Build command args
         try:
-            args = self._build_args(spec, template, params)
+            use_python_module = False
+            if not spec.executable_path and spec.is_available and "python" in spec.install_hint.lower():
+                use_python_module = True
+            
+            # Build args normally first
+            template_args = self._build_args(spec, template, params)
+            
+            if use_python_module:
+                import sys
+                cmd_args = template_args[1:] 
+                args = [sys.executable, "-m", spec.name] + cmd_args
+            else:
+                args = template_args
+                
+                
         except KeyError as e:
             return ToolResult(
                 success=False,

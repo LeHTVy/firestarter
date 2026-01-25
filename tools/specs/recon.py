@@ -145,7 +145,7 @@ def get_specs() -> List[ToolSpec]:
             name="theHarvester",
             category=ToolCategory.RECON,
             description="OSINT tool for email and subdomain harvesting",
-            executable_names=["theHarvester", "theharvester", "python3 -m theHarvester"], 
+            executable_names=["theHarvester", "theharvester"], 
             install_hint="pip install theHarvester",
             aliases=["harvester", "email_harvester", "theharvester", "email_harvesting"],
             commands={
