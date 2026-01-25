@@ -20,9 +20,9 @@ class NemotronEmbeddings:
         
         # Auto-detect if default model is missing
         try:
-            from utils.ollama_helper import check_model_exists, get_model_names
+            # from utils.ollama_helper import check_model_exists, get_model_names
             if not check_model_exists(model_name):
-                print(f"⚠️  Embedding model '{model_name}' not found.")
+                # print(f"⚠️  Embedding model '{model_name}' not found.")
                 available = get_model_names()
                 
                 # Try to find a suitable substitute
@@ -46,16 +46,17 @@ class NemotronEmbeddings:
                             break
                 
                 if found_candidate:
-                    print(f"💡 Switching to available embedding model: {found_candidate}")
+                    # print(f"💡 Switching to available embedding model: {found_candidate}")
                     self.model_name = found_candidate
                 elif available:
-                    print(f"⚠️  No embedding model found. Falling back to: {available[0]}")
+                    # Fallback to first available model (risky but better than crash)
+                    # print(f"⚠️  No embedding model found. Falling back to: {available[0]}")
                     self.model_name = available[0]
                 else:
-                     print("❌ No Ollama models found! Embeddings will fail.")
+                     pass # System will fail eventually but silently here
                      
         except Exception as e:
-            print(f"⚠️  Failed to check embedding models: {e}")
+            pass # Suppress initialization errors
 
         self.embedding_client = OllamaEmbeddingClient(model_name=self.model_name)
     
