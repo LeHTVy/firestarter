@@ -249,8 +249,26 @@ class SpecExecutor:
             output_queue = queue.Queue()
             
             def read_stdout():
-                for line in iter(process.stdout.readline, ''):
-                    output_queue.put(('stdout', line.rstrip()))
+                # Custom reader to handle \r and \n for progress bars
+                buffer = []
+                while True:
+                    char = process.stdout.read(1)
+                    if not char:
+                        break
+                    if char == '\r':
+                        line = "".join(buffer)
+                        if line:
+                            output_queue.put(('stdout', line))
+                        buffer = []
+                    elif char == '\n':
+                        line = "".join(buffer)
+                        if line:
+                            output_queue.put(('stdout', line))
+                        buffer = []
+                    else:
+                        buffer.append(char)
+                if buffer:
+                    output_queue.put(('stdout', "".join(buffer)))
                 process.stdout.close()
             
             def read_stderr():

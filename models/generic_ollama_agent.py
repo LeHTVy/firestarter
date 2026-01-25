@@ -201,6 +201,64 @@ class GenericOllamaAgent:
                 "refused": False
             }
     
+    def analyze(self,
+               target: str,
+               previous_results: Any,
+               task: str,
+               stream_callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+        """Analyze results for Q&A (Results QA Agent).
+        
+        Args:
+            target: Target domain
+            previous_results: Tool results from memory
+            task: User question/task
+            stream_callback: Optional streaming callback
+            
+        Returns:
+            Analysis result
+        """
+        # Map variables to template
+        retrieved_results = previous_results
+        
+        # Render system prompt
+        system_prompt = self.system_prompt_template.render(
+            user_question=task,
+            retrieved_results=retrieved_results,
+            target=target,
+            tool_name="ResultsQA"
+        )
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": task}
+        ]
+        
+        try:
+            response = self.llm_client.generate(
+                messages=messages,
+                stream=stream_callback is not None,
+                stream_callback=stream_callback,
+                temperature=0.5,
+                num_predict=2048
+            )
+            
+            if not response.get('success'):
+                return {
+                    "success": False,
+                    "error": response.get('error', 'Unknown error')
+                }
+            
+            return {
+                "success": True,
+                "analysis": response.get('content', '')
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    
     def synthesize_answer(self,
                          user_question: str,
                          search_results: Optional[Dict[str, Any]] = None,

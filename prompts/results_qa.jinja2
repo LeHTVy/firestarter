@@ -60,8 +60,16 @@ User question:
 {% endif %}
 
 {% if retrieved_results %}
-Retrieved tool results:
+Retrieved from Fast Memory (Redis High-Speed Buffer):
+{% if retrieved_results is mapping and retrieved_results.get('tool_results') %}
+{% for res in retrieved_results.tool_results %}
+## Tool: {{ res.tool_name or res.metadata.tool_name or 'Unknown Tool' }}
+Output:
+{{ res.document or res.page_content or res.get('document') or 'No output' }}
+{% endfor %}
+{% else %}
 {{ retrieved_results }}
+{% endif %}
 {% endif %}
 
 {% if tool_name %}
