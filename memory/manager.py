@@ -69,7 +69,7 @@ class MemoryManager:
         self.session_processor = SessionProcessor(
             redis_buffer=self.redis_buffer,
             conversation_store=self.conversation_store,
-            vector_store=self.conversation_retriever.vector_store
+            vector_store=self.conversation_retriever.vectorstore
         )
         
         # Current conversation/session
