@@ -48,23 +48,31 @@ class AnalyzeNode:
         
         # MEMORY QUERY : Check if this is a query request (not tool execution)
         if self._is_query_request(user_prompt):
-            memory_answer = self._query_memory(user_prompt, conversation_id)
-            if memory_answer:
-                # Found answer in memory - skip tool execution
+            memory_context = self.memory_manager.retrieve_context(
+                query=user_prompt,
+                k=10,
+                session_id=conversation_id,
+                include_tool_results=True,
+                include_buffer=True
+            )
+            
+            if memory_context:
+                # Route to Results QA node for intelligent processing
                 state["analysis"] = {
                     "user_intent": "Query past results from memory",
                     "intent_type": "memory_query",
                     "task_type": "retrieval",
                     "complexity": "simple",
                     "needs_tools": False,
-                    "can_answer_directly": True
+                    "can_answer_directly": False  # Let Results QA handle it
                 }
                 state["subtasks"] = []
-                state["memory_answer"] = memory_answer
+                # Pass raw context to state for Results QA node
+                state["memory_context"] = memory_context
                 
                 if self.stream_callback:
                     self.stream_callback("model_response", "system",
-                        f"✅ Found answer in {memory_answer['source']} (no tools executed)")
+                        "✅ Detected memory query. Retrieving context for Results Q&A model...")
                 
                 return state
         
