@@ -1,7 +1,8 @@
 
-from typing import List, Dict, Any, Optional, Set
 import re
 import logging
+import socket
+from typing import List, Dict, Any, Optional, Set
 from memory.session import AgentContext
 from memory.manager import MemoryManager
 
@@ -79,8 +80,6 @@ class TargetSetResolver:
             return
             
         try:
-            # Query ToolResultsStorage for subdomains/hosts related to this root_domain
-            # This logic depends on how structured findings are stored in results_storage
             results = self.memory_manager.results_storage.retrieve_results(
                 query=f"subdomains of {root_domain}",
                 conversation_id=self.memory_manager.conversation_id,
@@ -88,8 +87,6 @@ class TargetSetResolver:
             )
             
             for res in results:
-                # results_storage results usually have 'parsed_data' or similar
-                # We look for structured subdomain lists
                 data = res.get("results") or {}
                 if isinstance(data, dict):
                     if "subdomains" in data:
@@ -157,3 +154,41 @@ class TargetSetResolver:
                 
         # Return sorted list for determinism
         return sorted(list(set(valid)))
+
+    def resolve_to_ips(self, targets: List[str]) -> Dict[str, List[str]]:
+        """
+        Group targets by their resolved IPv4 addresses.
+        Returns: { ip: [domain1, domain2, ...] }
+        """
+        ip_map = {}
+        for target in targets:
+            # If target is already an IP
+            if re.match(r'^(?:\d{1,3}\.){3}\d{1,3}$', target):
+                if self._is_valid_public_ip(target):
+                    ip_map.setdefault(target, []).append(target)
+                continue
+                
+            # If target is a domain, resolve it
+            try:
+                ip = socket.gethostbyname(target)
+                if self._is_valid_public_ip(ip):
+                    ip_map.setdefault(ip, []).append(target)
+                else:
+                    self.logger.warning(f"Skipping internal/resolver IP: {ip} for {target}")
+            except (socket.gaierror, socket.timeout):
+                self.logger.debug(f"Could not resolve {target}")
+                continue
+                
+        return ip_map
+
+    def _is_valid_public_ip(self, ip: str) -> bool:
+        """Filter out loopback, private, and system resolver IPs."""
+        if not ip: return False
+        
+        # System resolver often seen in logs
+        if ip == "127.0.0.53": return False
+        
+        # Loopback
+        if ip.startswith("127."): return False
+        
+        return True

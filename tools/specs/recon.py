@@ -88,11 +88,11 @@ def get_specs() -> List[ToolSpec]:
             install_hint="apt install dnsutils",
             aliases=["dns_enum", "dns_lookup", "dns_query", "dns_recon"],
             commands={
-                "any": CommandTemplate(args=["+short", "ANY", "{domain}"], timeout=30),
-                "mx": CommandTemplate(args=["+short", "MX", "{domain}"], timeout=30),
-                "ns": CommandTemplate(args=["+short", "NS", "{domain}"], timeout=30),
-                "txt": CommandTemplate(args=["+short", "TXT", "{domain}"], timeout=30),
-                "a": CommandTemplate(args=["+short", "A", "{domain}"], timeout=30),
+                "any": CommandTemplate(args=["@8.8.8.8", "+short", "ANY", "{domain}"], timeout=30),
+                "mx": CommandTemplate(args=["@8.8.8.8", "+short", "MX", "{domain}"], timeout=30),
+                "ns": CommandTemplate(args=["@8.8.8.8", "+short", "NS", "{domain}"], timeout=30),
+                "txt": CommandTemplate(args=["@8.8.8.8", "+short", "TXT", "{domain}"], timeout=30),
+                "a": CommandTemplate(args=["@8.8.8.8", "+short", "A", "{domain}"], timeout=30),
             }
         ),
         

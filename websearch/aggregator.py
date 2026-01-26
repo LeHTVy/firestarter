@@ -1,42 +1,26 @@
-"""Web search aggregator."""
-
-from typing import Dict, Any, List, Optional
-from websearch.serpapi_client import SerpAPIClient
-from websearch.duckduckgo_client import DuckDuckGoClient
+from websearch.searxng_client import SearxNGClient
 from websearch.fetcher import WebFetcher
 from websearch.ranker import NeuralRanker
 from websearch.verifier import ResultVerifier
+import os
 
 
 class SearchAggregator:
-    """Aggregator for multi-source web search."""
+    """Aggregator for multi-source web search (SearxNG priority)."""
     
-    def __init__(self, serpapi_key: Optional[str] = None):
-        """Initialize search aggregator.
-        
-        Args:
-            serpapi_key: SerpAPI key
-        """
-        # Try to initialize SerpAPI (primary)
-        self.serpapi = None
-        self.serpapi_available = False
-        try:
-            self.serpapi = SerpAPIClient(api_key=serpapi_key)
-            self.serpapi_available = True
-        except (ValueError, Exception) as e:
-            # SerpAPI not available (no key or error)
-            pass
-        
-        # Initialize DuckDuckGo (fallback)
-        self.duckduckgo = None
-        self.duckduckgo_available = False
-        try:
-            self.duckduckgo = DuckDuckGoClient()
-            self.duckduckgo_available = True
-        except (ImportError, Exception) as e:
-            # DuckDuckGo not available
-            pass
-        
+    def __init__(self, **kwargs):
+        """Initialize search aggregator."""
+        # Initialize SearxNG (Primary local)
+        self.searxng = None
+        self.searxng_available = False
+        searxng_url = os.getenv('SEARXNG_URL')
+        if searxng_url:
+            try:
+                self.searxng = SearxNGClient(base_url=searxng_url)
+                self.searxng_available = True
+            except Exception as e:
+                pass
+
         self.fetcher = WebFetcher()
         self.ranker = NeuralRanker()
         self.verifier = ResultVerifier()
@@ -59,41 +43,23 @@ class SearchAggregator:
         Returns:
             Aggregated search results
         """
-        # Step 1: Search with SerpAPI (primary) or DuckDuckGo (fallback)
+        # Step 1: Search with SearxNG (Primary)
         search_result = None
         search_source = None
         
-        # Try SerpAPI first if available
-        if self.serpapi_available and self.serpapi:
+        if self.searxng_available and self.searxng:
             try:
-                search_result = self.serpapi.search(query, num_results=num_results * 2)
+                search_result = self.searxng.search(query, num_results=num_results * 2)
                 if search_result.get("success"):
-                    search_source = "serpapi"
-                else:
-                    # Check if it's a quota/rate limit error
-                    error = search_result.get("error", "").lower()
-                    if any(keyword in error for keyword in ["quota", "rate limit", "limit exceeded", "429"]):
-                        # Fallback to DuckDuckGo
-                        search_result = None
+                    search_source = "searxng"
             except Exception as e:
-                # SerpAPI failed, try fallback
                 search_result = None
         
-        # Fallback to DuckDuckGo if SerpAPI failed or unavailable
-        if not search_result or not search_result.get("success"):
-            if self.duckduckgo_available and self.duckduckgo:
-                try:
-                    search_result = self.duckduckgo.search(query, num_results=num_results * 2)
-                    if search_result.get("success"):
-                        search_source = "duckduckgo"
-                except Exception as e:
-                    pass
-        
-        # If both failed, return error
+        # If SearxNG failed, return error
         if not search_result or not search_result.get("success"):
             return {
                 "success": False,
-                "error": search_result.get("error", "All search providers failed") if search_result else "No search providers available",
+                "error": search_result.get("error", "SearxNG search failed") if search_result else "SearxNG provider not available. Please set SEARXNG_URL.",
                 "query": query,
                 "results": None
             }
@@ -133,13 +99,14 @@ class SearchAggregator:
             "query": query,
             "results": results[:num_results],
             "total_found": len(results),
-            "search_source": search_source,  # "serpapi" or "duckduckgo"
+            "search_source": search_source,
             "aggregation_steps": {
                 "search": True,
                 "fetch": fetch_content,
                 "rank": rank_results,
                 "verify": verify_results
-            }
+            },
+            "source": search_source
         }
     
     def search_multiple_queries(self,

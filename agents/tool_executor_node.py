@@ -244,9 +244,25 @@ class ToolExecutorNode:
         model_callback = self._create_model_callback()
         tool_stream_callback = self._create_tool_callback()
         
-        # Get targets
-        targets = self._extract_targets(state, target)
+        # SRE Optimization (Strategic Recon Expansion):
+        # If any tool is a port scanner, group subdomains by IP to avoid redundant scanning
+        scan_tools = ["nmap_scan", "nmap", "ps", "port_scan", "masscan"]
+        is_scan_task = any(any(t in subtask.get("required_tools", []) for t in scan_tools) for subtask in subtasks)
         
+        target_map = {} # IP -> [domains]
+        if is_scan_task and targets:
+            target_map = self.target_resolver.resolve_to_ips(targets)
+            if target_map:
+                effective_targets = list(target_map.keys())
+                state["execution_target_map"] = target_map
+                if self.stream_callback:
+                    self.stream_callback("model_response", "system", 
+                        f"🎯 SRE Optimized: Resolved {len(targets)} subdomains to {len(effective_targets)} unique IPs.")
+            else:
+                effective_targets = targets
+        else:
+            effective_targets = targets
+
         # Collect all tool execution tasks (Expanded by targets)
         tool_tasks = []
         for subtask in subtasks:
@@ -254,10 +270,10 @@ class ToolExecutorNode:
                 continue
             tools = subtask.get("required_tools", [])
             for tool_name in tools:
-                if targets:
+                if effective_targets:
                     # FAN-OUT: Create a task for each target
-                    # Limit fan-out to prevent explosion (e.g. max 50 targets per action)
-                    max_targets = targets[:50] 
+                    # Limit fan-out to prevent explosion
+                    max_targets = effective_targets[:50] 
                     for target_item in max_targets:
                         tool_tasks.append((subtask, tool_name, target_item))
                 else:
@@ -523,41 +539,42 @@ Extract parameters from context and execute the tool."""
 
                 # Persist to structured database (PostgreSQL findings table)
                 conversation_id = state.get("conversation_id") or state.get("session_id")
-                target = self._get_target(state)
                 
-                for ftype, items in findings.items():
-                    if isinstance(items, list):
-                        for item in items:
-                            # Smarter value extraction based on finding type
-                            if isinstance(item, dict):
-                                if ftype == "open_ports" and "host" in item and "port" in item:
-                                    val = f"{item['host']}:{item['port']}"
-                                elif ftype == "vulnerabilities" and "type" in item:
-                                    val = f"{item['type']} on {item.get('target', 'unknown')}"
-                                else:
-                                    val = str(item.get("host", "")) or str(item.get("value", "")) or str(item)
+                # SRE Broadcasting: If we scanned an IP that represents multiple domains,
+                # broadcast the findings to all of them in memory.
+                target_map = state.get("execution_target_map", {})
+                actual_target = result.get("target") or state.get("target") or self._get_target(state)
+                
+                broadcast_targets = [actual_target]
+                if actual_target in target_map:
+                    # This was an IP scan representing multiple domains
+                    broadcast_targets.extend(target_map[actual_target])
+                    # Ensure unique
+                    broadcast_targets = list(set(broadcast_targets))
+
+                if conversation_id:
+                    for b_target in broadcast_targets:
+                        for ftype, items in findings.items():
+                            if isinstance(items, list):
+                                for item in items:
+                                    self.memory_manager.conversation_store.add_finding(
+                                        conversation_id=conversation_id,
+                                        finding_type=ftype,
+                                        value=str(item),
+                                        source_tool=result.get("tool_name", ""),
+                                        target=b_target
+                                    )
                             else:
-                                val = str(item)
+                                self.memory_manager.conversation_store.add_finding(
+                                    conversation_id=conversation_id,
+                                    finding_type=ftype,
+                                    value=str(items),
+                                    source_tool=result.get("tool_name", ""),
+                                    target=b_target
+                                )
 
-                            self.memory_manager.conversation_store.add_finding(
-                                conversation_id=conversation_id,
-                                finding_type=ftype,
-                                value=val,
-                                source_tool=result.get("tool_name", ""),
-                                target=target,
-                                metadata=item if isinstance(item, dict) else None
-                            )
-                    else:
-                        # Single item
-                        self.memory_manager.conversation_store.add_finding(
-                            conversation_id=conversation_id,
-                            finding_type=ftype,
-                            value=str(items),
-                            source_tool=result.get("tool_name", ""),
-                            target=target
-                        )
-
-                self.memory_manager.update_agent_context(findings)
+                    # Update session context with findings
+                    self.memory_manager.update_agent_context(findings)
                 
         return summary.strip()
     

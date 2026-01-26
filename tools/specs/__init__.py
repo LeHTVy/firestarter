@@ -52,6 +52,11 @@ class ToolSpec:
         import os
         from pathlib import Path
         
+        # 1. Check if it's an internal python implementation
+        if self.implementation:
+            self.is_available = True
+            return True
+        
         # 1. Check standard PATH
         for exe_name in self.executable_names:
             path = shutil.which(exe_name)

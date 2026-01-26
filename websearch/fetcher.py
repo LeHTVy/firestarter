@@ -1,9 +1,11 @@
-"""Web content fetcher."""
-
 import requests
+import logging
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional, List
-from newspaper import Article
+try:
+    from newspaper import Article
+except ImportError:
+    Article = None
 import time
 
 

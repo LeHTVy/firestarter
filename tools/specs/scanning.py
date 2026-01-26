@@ -13,12 +13,12 @@ def get_specs() -> List[ToolSpec]:
         # NMAP - Port Scanner
         # ─────────────────────────────────────────────────────────
         ToolSpec(
-            name="nmap",
+            name="nmap_scan",
             category=ToolCategory.SCANNING,
             description="Network exploration and port scanner",
             executable_names=["nmap"],
             install_hint="apt install nmap",
-            aliases=["nmap_scan"],
+            aliases=["nmap", "ps", "port_scan"],
             commands={
                 "quick": CommandTemplate(
                     args=["-T4", "-F", "{target}"],
