@@ -244,8 +244,10 @@ class ToolExecutorNode:
         model_callback = self._create_model_callback()
         tool_stream_callback = self._create_tool_callback()
         
+        # Get targets
+        targets = self._extract_targets(state, target)
+        
         # SRE Optimization (Strategic Recon Expansion):
-        # If any tool is a port scanner, group subdomains by IP to avoid redundant scanning
         scan_tools = ["nmap_scan", "nmap", "ps", "port_scan", "masscan"]
         is_scan_task = any(any(t in subtask.get("required_tools", []) for t in scan_tools) for subtask in subtasks)
         
