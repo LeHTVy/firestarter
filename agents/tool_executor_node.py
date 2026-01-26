@@ -268,7 +268,7 @@ class ToolExecutorNode:
 
         # Fan-out / DSQ Strategy
         # If targets > 10, offload to Durable Scanning Queue (DSQ) for persistence
-        use_dsq = len(targets) > 10 and is_scan_task and hasattr(self.memory, 'scanning_queue')
+        use_dsq = len(targets) > 10 and is_scan_task and hasattr(self.memory_manager, 'scanning_queue')
         
         if use_dsq:
             if self.stream_callback:
@@ -279,8 +279,8 @@ class ToolExecutorNode:
             # We assume the first subtask's tool for now as a simple implementation
             tool_name = subtasks[0].get("required_tools", [scan_tools[0]])[0]
             cmd_name = subtasks[0].get("command", "quick")
-            self.memory.scanning_queue.add_targets(
-                self.memory.conversation_id,
+            self.memory_manager.scanning_queue.add_targets(
+                self.memory_manager.conversation_id,
                 targets,
                 tool_name,
                 cmd_name
@@ -347,7 +347,7 @@ class ToolExecutorNode:
                 tool_results.append(master_result)
 
             # Final progress report
-            progress = self.memory.scanning_queue.get_progress(self.memory.conversation_id)
+            progress = self.memory_manager.scanning_queue.get_progress(self.memory_manager.conversation_id)
             if self.stream_callback:
                 self.stream_callback("model_response", "system", 
                     f"✅ Background scan batch complete. Total findings promoted to Entity View: {progress['done']}/{progress['total']}.")
@@ -735,7 +735,7 @@ Extract parameters from context and execute the tool."""
         """Worker to consume tasks from Durable Scanning Queue."""
         results = []
         while True:
-            task = self.memory.scanning_queue.claim_task(self.memory.conversation_id)
+            task = self.memory_manager.scanning_queue.claim_task(self.memory_manager.conversation_id)
             if not task:
                 break
             
@@ -770,7 +770,7 @@ Extract parameters from context and execute the tool."""
             if result:
                 results.append(result)
                 # Update DB status
-                self.memory.scanning_queue.update_result(
+                self.memory_manager.scanning_queue.update_result(
                     task_id, 
                     success=result.get("success", False),
                     result=result.get("parsed_data", {}),
