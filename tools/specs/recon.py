@@ -108,7 +108,7 @@ def get_specs() -> List[ToolSpec]:
             install_hint="go install github.com/projectdiscovery/httpx/cmd/httpx@latest",
             commands={
                 "probe": CommandTemplate(
-                    args=["{url}", "-status-code", "-title"], 
+                    args=["-u", "{url}", "-sc", "-title"],  # Using -u to indicate PD version
                     timeout=120,
                     description="HTTP probe with status and title"
                 ),
@@ -187,6 +187,26 @@ def get_specs() -> List[ToolSpec]:
                     args=["-t", "{target}", "-m", "nmap", "httpx", "-y"],
                     timeout=300,
                     description="Quick scan with nmap and httpx"
+                ),
+            }
+        ),
+        
+        # ─────────────────────────────────────────────────────────
+        # WEB SEARCH - Aggregated Security Intelligence
+        # ─────────────────────────────────────────────────────────
+        ToolSpec(
+            name="web_search",
+            category=ToolCategory.RECON,
+            description="Multi-source web search for vulnerability intelligence",
+            executable_names=[], # No binary needed
+            install_hint="Internal tool",
+            implementation="websearch.tool_wrapper.search",
+            aliases=["google_search", "vulnerability_intelligence", "online_recon"],
+            commands={
+                "search": CommandTemplate(
+                    args=[], # Handled by implementation
+                    timeout=60,
+                    description="Perform aggregated web search"
                 ),
             }
         ),

@@ -156,6 +156,7 @@ class ToolRegistry:
                     risk_level="low", # Default for discovered tools
                     priority=False,   # Default
                     assigned_agents=assigned_agents,
+                    implementation=spec.implementation,
                     aliases=spec.aliases or [],
                     parameters=ToolSchema(type="object", properties={}, required=[]), # Default schema
                     commands={}       # We can populate this more richly later if needed

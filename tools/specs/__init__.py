@@ -1,6 +1,6 @@
 """Tool Specs Package - Declarative tool specifications."""
 
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -44,6 +44,7 @@ class ToolSpec:
     executable_path: str = None
     is_available: bool = False
     aliases: List[str] = field(default_factory=list)
+    implementation: Optional[str] = None
     
     def find_executable(self) -> bool:
         """Find the tool executable on the system with enhanced path discovery."""
