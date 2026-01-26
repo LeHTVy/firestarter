@@ -517,7 +517,25 @@ class ToolExecutor:
                      # Since implementation is sync, we just dump the result/output to stream
                      if stream_callback:
                          if result.get("raw_output"):
-                             stream_callback(str(result.get("raw_output")))
+                             output = result.get("raw_output")
+                             # Pretty print web_search output
+                             if tool_name == "web_search" and isinstance(result.get("results"), dict):
+                                 try:
+                                     search_res = result.get("results", {})
+                                     formatted = []
+                                     formatted.append(f"\n🔍 Search Query: {search_res.get('query', 'Unknown')}")
+                                     formatted.append(f"Found {search_res.get('total_found', 0)} results:\n")
+                                     
+                                     for i, item in enumerate(search_res.get("results", []), 1):
+                                         formatted.append(f"{i}. [bold cyan]{item.get('title', 'No Title')}[/bold cyan]")
+                                         formatted.append(f"   Link: {item.get('link', '')}")
+                                         formatted.append(f"   Snippet: {item.get('snippet', '')}\n")
+                                     
+                                     output = "\n".join(formatted)
+                                 except Exception:
+                                     output = result.get("raw_output") # Fallback
+                             
+                             stream_callback(str(output))
                          
                          if not result.get("success") and result.get("error"):
                              stream_callback(f"❌ Implementation Error: {result.get('error')}")

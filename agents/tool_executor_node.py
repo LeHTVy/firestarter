@@ -387,7 +387,11 @@ Extract parameters from context and execute the tool."""
         if tool_name == "web_search" and "query" not in params:
             # Generate a default query from target
             if targets:
-                params["query"] = f"vulnerabilities in {targets[0]}"
+                target = targets[0]
+                if "." in target and not target.startswith("http"):
+                    params["query"] = f'"{target}" security vulnerabilities OR site:{target} "vulnerabilities"'
+                else:
+                    params["query"] = f'"{target}" vulnerabilities'
             else:
                 params["query"] = f"security vulnerabilities {description}"
         

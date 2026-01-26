@@ -82,16 +82,12 @@ class ToolExecutionPanel:
                 error = self.result.get("error", "Unknown error")
                 content_lines.append(f"[bold red]✗ Error: {error}[/bold red]")
         
-        content_lines.append("") 
-        # Show ALL output lines
-        for line in self.output_lines:  
-            content_lines.append(f"  {line}")
-        
-        content = "\n".join(content_lines)
-        
+        content_lines.append("")
+        content = "\n".join(content_lines) 
         return Group(
             Text(title, style="cyan bold"),
-            Text.from_markup(content)
+            Text.from_markup(content),
+            *[Text(line) for line in self.output_lines]
         )
 
 
