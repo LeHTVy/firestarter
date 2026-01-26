@@ -105,8 +105,16 @@ class ToolExecutor:
         start_time = datetime.utcnow()
         
         try:
-            # Use SpecExecutor for CLI tools (primary execution method)
+            # Try executing via specs first
             result = self._execute_via_specs_direct(tool_name, command_name, parameters)
+            
+            # If not found in specs, try legacy implementation
+            if not result.get("success") and "not found in specs" in result.get("error", ""):
+                if tool.implementation:
+                    result = self._execute_implementation(tool.implementation, parameters)
+                else:
+                    # Return the original spec error if no implementation fallback
+                    pass
             
             end_time = datetime.utcnow()
             execution_time = (end_time - start_time).total_seconds()
@@ -203,6 +211,56 @@ class ToolExecutor:
         
         return {"valid": True}
     
+    def _execute_implementation(self, implementation_path: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute python implementation dynamically.
+        
+        Args:
+            implementation_path: Dot-path to function (e.g. 'module.func')
+            parameters: Parameters to pass
+            
+        Returns:
+            Execution result
+        """
+        try:
+            module_name, func_name = implementation_path.rsplit('.', 1)
+            module = importlib.import_module(module_name)
+            func = getattr(module, func_name)
+            
+            # Inspect function signature
+            sig = inspect.signature(func)
+            
+            # Filter parameters to match signature (ignore extra)
+            # But also allow **kwargs in function to take all
+            valid_params = {}
+            has_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+            
+            if has_kwargs:
+                valid_params = parameters
+            else:
+                for k, v in parameters.items():
+                    if k in sig.parameters:
+                        valid_params[k] = v
+            
+            # Execute
+            result = func(**valid_params)
+            
+            if isinstance(result, dict) and "success" in result:
+                return result
+                
+            # Wrap simple return values
+            return {
+                "success": True,
+                "results": result,
+                "raw_output": str(result)
+            }
+            
+        except ImportError as e:
+            return {"success": False, "error": f"Import error: {str(e)}"}
+        except AttributeError as e:
+            return {"success": False, "error": f"Function not found: {str(e)}"}
+        except Exception as e:
+            return {"success": False, "error": f"Implementation error: {str(e)}"}
+
     def _execute_via_specs_direct(
         self,
         tool_name: str,
@@ -448,6 +506,19 @@ class ToolExecutor:
         try:
             # Execute via SpecExecutor with real-time streaming
             result = self._execute_via_specs_streaming(tool_name, command_name, parameters, stream_callback)
+            
+            # If not found in specs, try legacy implementation
+            if not result.get("success") and "not found in specs" in result.get("error", ""):
+                 if stream_callback:
+                     stream_callback(f"⚠️ Tool '{tool_name}' not found in specs, falling back to Python implementation...")
+                 
+                 if tool.implementation:
+                     result = self._execute_implementation(tool.implementation, parameters)
+                     # Since implementation is sync, we just dump the result/output to stream
+                     if stream_callback and result.get("raw_output"):
+                         stream_callback(str(result.get("raw_output")))
+                 else:
+                     pass # Return original error
             
             # Add metadata
             end_time = datetime.utcnow()
