@@ -8,12 +8,31 @@ class ToolOutputParser:
     
     @staticmethod
     def parse_subfinder(stdout: str) -> Dict[str, Any]:
-        """Parse subfinder output."""
+        """Parse subfinder/amass output using robust FQDN regex."""
+        # Strict FQDN regex: allows letters, numbers, hyphens in labels, requires at least one dot
+        # and excludes common process log noise like "[DNS]" or brackets.
+        fqdn_pattern = re.compile(
+            r'\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b',
+            re.IGNORECASE
+        )
+        
+        # Also filter out binary blobs or very long lines that are clearly not domains
         subdomains = []
         for line in stdout.split('\n'):
             line = line.strip()
-            if line and '.' in line:
-                subdomains.append(line.lower())
+            if not line:
+                continue
+            
+            # Find all matches in the line
+            matches = fqdn_pattern.findall(line)
+            for m in matches:
+                # Basic validation: length and common stop words
+                m_lower = m.lower()
+                if 4 < len(m_lower) < 253:
+                    # Filter out common false positives from logs
+                    if not any(stop in m_lower for stop in [".exe", ".so", ".dll", "github.com", "owasp.org"]):
+                        subdomains.append(m_lower)
+                        
         return {"subdomains": list(set(subdomains))}
 
     @staticmethod
