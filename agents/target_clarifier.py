@@ -988,9 +988,9 @@ Return only valid JSON:"""
         clarification["verified_domain"] = verified_target
         state["target_clarification"] = clarification
         
-        session_context = self.context_manager.get_context()
+        session_context = self.memory_manager.get_agent_context()
         if session_context:
-            session_context = session_context.merge_with({"target_domain": verified_target})
+            session_context.domain = verified_target
             state["session_context"] = session_context.to_dict()
         
         state["user_prompt"] = f"{state['user_prompt']} {verified_target}"
@@ -1065,11 +1065,9 @@ Return only valid JSON:"""
             )
         
         # Update session context
-        session_context = self.context_manager.get_context()
+        session_context = self.memory_manager.get_agent_context()
         if session_context:
-            session_context = session_context.merge_with({
-                "target_domain": entity_info.domain
-            })
+            session_context.domain = entity_info.domain
             state["session_context"] = session_context.to_dict()
         
         # Update user prompt

@@ -294,6 +294,11 @@ class GenericOllamaAgent:
                 for r in web_results.get("results", [])[:5]:
                     context_parts.append(f"- {r.get('title', '')}: {r.get('snippet', '')}\n")
             
+            # Results Q&A (Memory Query) results
+            results_qa = search_results.get("results_qa")
+            if results_qa:
+                context_parts.append(f"\n## Summary of Findings from Memory:\n{results_qa}\n")
+            
             # Direct answer if available
             direct = search_results.get("direct_answer")
             if direct:

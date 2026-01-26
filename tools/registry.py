@@ -121,18 +121,55 @@ class ToolRegistry:
             for alias in tool.aliases or []:
                 self._alias_map[alias.lower()] = tool.name
 
+        # Try to sync from ToolSpecs (Dynamic Discovery)
         try:
             from tools.specs import get_all_specs
             specs = get_all_specs()
             for spec in specs:
+                # If tool already exists from JSON, just sync aliases
                 if spec.name in self.tools:
-                    for alias in spec.aliases:
-                        self._alias_map[alias.lower()] = spec.name
-    
+                    tool = self.tools[spec.name]
+                    # Merge aliases
+                    existing_aliases = set(tool.aliases or [])
+                    new_aliases = set(spec.aliases or [])
+                    tool.aliases = list(existing_aliases | new_aliases)
+                    
+                    # Update alias map
+                    for alias in tool.aliases:
+                        self._alias_map[alias.lower()] = tool.name
+                    continue
+                
+                # If tool is new, create a full definition
+                tool = ToolDefinition(
+                    name=spec.name,
+                    description=spec.description,
+                    category=spec.category.value if hasattr(spec.category, 'value') else str(spec.category),
+                    risk_level="low", # Default for discovered tools
+                    priority=False,   # Default
+                    assigned_agents=["recon_agent"], # Defaulting to recon
+                    aliases=spec.aliases or [],
+                    commands={}       # We can populate this more richly later if needed
+                )
+                
+                # Copy commands from spec if available
+                if hasattr(spec, 'commands') and spec.commands:
+                    for cmd_name, cmd_tmpl in spec.commands.items():
+                        # Simple mapping to CommandDefinition
+                        if not tool.commands: tool.commands = {}
+                        tool.commands[cmd_name] = CommandDefinition(
+                            description=cmd_tmpl.description or f"Run {cmd_name}",
+                            parameters=ToolSchema(type="object", properties={}, required=[]), # Minimal schema
+                            requires_sudo=cmd_tmpl.requires_sudo
+                        )
+                
+                self.tools[tool.name] = tool
+                for alias in tool.aliases:
+                    self._alias_map[alias.lower()] = tool.name
+                    
         except ImportError:
             pass
         except Exception as e:
-            print(f"Warning: Failed to sync aliases from ToolSpecs: {e}")
+            print(f"Warning: Failed to sync tools from ToolSpecs: {e}")
     
     def get_tool(self, name: str) -> Optional[ToolDefinition]:
         """Get tool by name or alias.

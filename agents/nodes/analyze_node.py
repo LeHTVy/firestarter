@@ -141,7 +141,7 @@ class AnalyzeNode:
             
             # Update session context with target
             if session_context:
-                session_context = session_context.merge_with({"target_domain": target})
+                session_context.domain = target
                 state["session_context"] = session_context.to_dict()
             else:
                 # Create new session context if needed
