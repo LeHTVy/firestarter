@@ -286,26 +286,48 @@ class StreamingManager:
         
         renderables = []
         
-        # Helper to limit displayed panels to avoid screen overflow
         def get_recent(panels, count=3):
             return panels[-count:] if len(panels) > count else panels
         
-        # Target Info & Static Panels (Show all, or maybe just recent?)
-        # For now, show all as they are important context
         if self.info_panels:
             renderables.append(Group(*self.info_panels))
         
-        # Progress
         renderables.append(self.progress_panel.render())
         
-        # Tools
-        tool_panels_list = [panel.render() for panel in self.tool_panels.values()]
-        if tool_panels_list:
-            renderables.append(Group(*tool_panels_list))
-        else:
+        active_tools = []
+        completed_tools = []
+        
+        for panel_id, panel in self.tool_panels.items():
+            if hasattr(panel, 'status') and ("Completed" in panel.status or "Failed" in panel.status or "Detailed" in panel.status):
+                 completed_tools.append(panel)
+            else:
+                 active_tools.append(panel)
+
+        if active_tools:
+            active_renderables = [p.render() for p in active_tools]
+            renderables.append(Group(*active_renderables))
+        if completed_tools:
+            from rich.table import Table
+            from rich import box
+            
+            summary_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+            summary_table.add_column("Status", style="bold")
+            summary_table.add_column("Tool", style="cyan")
+            summary_table.add_column("Result", style="dim")
+            
+            for p in completed_tools[-5:]: 
+                status_icon = "✅" if "Completed" in p.status else "❌"
+                summary_table.add_row(status_icon, p.tool_name, p.status)
+
+            renderables.append(Panel(
+                summary_table, 
+                title=f"[green]Completed Tools ({len(completed_tools)})[/green]",
+                expand=False
+            ))
+            
+        if not active_tools and not completed_tools:
             renderables.append(Panel("[dim]No tools running...[/dim]", title="[cyan]Tools[/cyan]"))
         
-        # Models
         model_panels_list = [panel.render() for panel in self.model_panels.values()]
         if model_panels_list:
             renderables.append(Group(*model_panels_list))
