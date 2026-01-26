@@ -276,9 +276,38 @@ class ToolExecutorNode:
                     f"📦 Large target list ({len(targets)}) detected. Offloading to Durable Scanning Queue (PostgreSQL)...")
             
             # 1. Add targets to queue
-            # We assume the first subtask's tool for now as a simple implementation
-            tool_name = subtasks[0].get("required_tools", [scan_tools[0]])[0]
-            cmd_name = subtasks[0].get("command", "quick")
+            # Prioritize scan tools for DSQ/Fan-out as they are the intended use case
+            relevant_subtask = None
+            for s in subtasks:
+                if any(t in s.get("required_tools", []) for t in scan_tools):
+                    relevant_subtask = s
+                    break
+            
+            if not relevant_subtask:
+                relevant_subtask = subtasks[0]
+                
+            tool_name = relevant_subtask.get("required_tools", ["port_scan"])[0]
+            cmd_name = relevant_subtask.get("command", "quick")
+            
+            # EFFICIENCY FILTER: Skip subdomain discovery (recon) on large target lists that are already sub-assets (domains or IPs)
+            discovery_tools = ["mass", "amass", "subfinder", "finder", "bbot", "theHarvester", "subdomain_discovery"]
+            if tool_name in discovery_tools and len(targets) > 10:
+                # Use regex for more robust detection of asset types
+                is_ip_set = all(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', str(t)) for t in targets[:5])
+                is_domain_set = all(re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', str(t)) for t in targets[:5])
+                
+                if is_ip_set or is_domain_set:
+                    asset_type = "IP addresses" if is_ip_set else "domains/subdomains"
+                    if self.stream_callback:
+                        self.stream_callback("model_response", "system", 
+                            f"🛡️ Intelligence Filter: Skipping redundant discovery tool '{tool_name}' on {len(targets)} {asset_type}. "
+                            f"Running discovery on already-resolved assets is inefficient and typically results in sub-scanning loops.")
+                    return [{
+                        "tool_name": tool_name, 
+                        "success": True, 
+                        "results": {"status": "skipped", "reason": f"redundant discovery on {asset_type}"}
+                    }]
+
             self.memory_manager.scanning_queue.add_targets(
                 self.memory_manager.conversation_id,
                 targets,

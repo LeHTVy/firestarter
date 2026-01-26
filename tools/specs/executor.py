@@ -251,9 +251,6 @@ class SpecExecutor:
         if stream_callback:
             stream_callback(f"🚀 Running: {' '.join(args)}")
         
-        if stream_callback:
-            stream_callback(f"🚀 Running: {' '.join(args)}")
-        
         streamer = ProcessStreamer()
         
         try:
