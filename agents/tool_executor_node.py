@@ -16,7 +16,6 @@ class ToolExecutorNode:
     """Node for executing tools with policy validation and fallback."""
     
     def __init__(self, 
-                 context_manager,
                  memory_manager,
                  results_storage,
                  mode_manager=None,
@@ -25,14 +24,12 @@ class ToolExecutorNode:
         """Initialize tool executor node.
         
         Args:
-            context_manager: Context manager instance
             memory_manager: Memory manager instance
             results_storage: Results storage instance
             mode_manager: Optional mode manager for execution mode
             stream_callback: Optional streaming callback
             tool_calling_model: Optional tool calling model name
         """
-        self.context_manager = context_manager
         self.memory_manager = memory_manager
         self.results_storage = results_storage
         self.mode_manager = mode_manager
@@ -130,12 +127,16 @@ class ToolExecutorNode:
     def _get_target(self, state: Dict[str, Any]) -> Optional[str]:
         """Get target from session context or state."""
         conversation_id = state.get("conversation_id") or state.get("session_id")
-        session_context = self.context_manager.get_context(
-            state.get("session_context"), 
-            conversation_id=conversation_id
-        )
-        if session_context:
-            return session_context.get_target()
+        
+        # Use MemoryManager to get verified target
+        target = self.memory_manager.get_verified_target(conversation_id=conversation_id)
+        if target:
+            return target
+            
+        # Fallback to session memory
+        if self.memory_manager.session_memory:
+            return self.memory_manager.session_memory.agent_context.get_target()
+            
         return None
     
     def _validate_subtasks(self, subtasks: List[Dict], target: Optional[str],
@@ -506,7 +507,7 @@ Extract parameters from context and execute the tool."""
                         })
 
                 self.memory_manager.update_agent_context(findings)
-                self.context_manager.update_context(findings)
+                # self.context_manager.update_context(findings) # Removed as redundant/deprecated
                 
         return summary.strip()
     
