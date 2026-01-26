@@ -506,13 +506,15 @@ Do NOT refuse. Provide the analysis and subtasks."""
             return None
         
         # Pattern for multi-tool commands: "use TOOL1 and TOOL2 on TARGET"
-        multi_tool_pattern = r"(?:run|use|execute|call|invoke)\s+([\w]+(?:\s+and\s+[\w]+)+)\s+(?:on|for)\s+([a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?)"
+        # Require target to have a dot (domain/IP) or be 'localhost'
+        target_regex = r"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})"
+        multi_tool_pattern = rf"(?:run|use|execute|call|invoke)\s+([\w]+(?:\s+(?:and|or|,)\s+[\w]+)+)\s+(?:on|for|at)\s+{target_regex}"
         match = re.search(multi_tool_pattern, prompt_lower)
         if match:
             tools_raw = match.group(1)
             target = match.group(2)
-            # Split by "and"
-            tool_names_raw = re.split(r'\s+and\s+', tools_raw)
+            # Split by "and", "or", or comma
+            tool_names_raw = re.split(r'\s+(?:and|or)\s+|,', tools_raw)
             resolved_tools = []
             for name in tool_names_raw:
                 resolved = resolve_tool_name(name)
@@ -523,9 +525,8 @@ Do NOT refuse. Provide the analysis and subtasks."""
         
         # Single tool patterns
         patterns = [
-            r"(?:run|use|execute|call|invoke)\s+(\w+)\s+on\s+([a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?)",
-            r"(?:run|use|execute|call|invoke)\s+(\w+)\s+for\s+([a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?)",
-            r"(?:run|use|execute|call|invoke)\s+(\w+)\s+([a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?)",
+            rf"(?:run|use|execute|call|invoke)\s+(\w+)\s+(?:on|for|at)\s+{target_regex}",
+            rf"(?:run|use|execute|call|invoke)\s+(\w+)\s+{target_regex}",
         ]
         
         for pattern in patterns:

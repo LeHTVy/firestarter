@@ -148,6 +148,7 @@ class ToolRegistry:
                     priority=False,   # Default
                     assigned_agents=["recon_agent"], # Defaulting to recon
                     aliases=spec.aliases or [],
+                    parameters=ToolSchema(type="object", properties={}, required=[]), # Default schema
                     commands={}       # We can populate this more richly later if needed
                 )
                 
