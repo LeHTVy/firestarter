@@ -139,46 +139,54 @@ class AnalyzeNode:
             # Handle single tool or multiple tools
             tool_names = tool_execution_match.get("tools") or [tool_execution_match.get("tool")]
             
-            # Update session context with target
-            if session_context:
-                session_context.domain = target
-                state["session_context"] = session_context.to_dict()
-            else:
-                # Create new session context if needed
-                # from agents.context_manager import get_context_manager
-                # context_mgr = get_context_manager()
-                # new_context = context_mgr.create_context({"target_domain": target})
-                # state["session_context"] = new_context.to_dict()
-                pass # Already handled by memory_manager logic if needed, or update memory manager
+            # Check if target is a memory reference (subdomains, etc.)
+            resolved_targets = [target]
+            if self._is_memory_target(target):
+                resolved_targets = self._resolve_memory_target(target, session_context)
+                if not resolved_targets:
+                    # Fallback or error if no items in memory
+                    if self.stream_callback:
+                        self.stream_callback("model_response", "system", 
+                            f"⚠️ No items found in memory for reference '{target}'.")
+                    # Do not proceed with tool execution if no targets resolved
+                    return self._analyze_via_llm(state, user_prompt, conversation_history_str, session_context, conversation_id)
             
+            # Update session context with target (use first one for context)
+            if session_context:
+                session_context.domain = resolved_targets[0]
+                state["session_context"] = session_context.to_dict()
+                
             # Explicitly save verified target
             if conversation_id:
                 self.memory_manager.save_verified_target(
                     conversation_id=conversation_id,
-                    domain=target,
-                    structured_info={"domain": target, "confidence": 1.0}
+                    domain=resolved_targets[0],
+                    structured_info={"domain": resolved_targets[0], "confidence": 1.0}
                 )
             
-            # Create subtasks for each tool
+            # Create subtasks for each tool AND each resolved target
             subtasks = []
-            for i, tool_name in enumerate(tool_names):
-                subtask = {
-                    "id": f"subtask_direct_{tool_name}_{i}",
-                    "name": f"Execute {tool_name}",
-                    "description": f"Execute {tool_name} on {target}",
-                    "type": "tool_execution",
-                    "required_tools": [tool_name],
-                    "required_agent": "recon_agent",
-                    "priority": "high"
-                }
-                subtasks.append(subtask)
+            for tool_name in tool_names:
+                for target_item in resolved_targets:
+                    subtask = {
+                        "id": f"subtask_direct_{tool_name}_{target_item.replace('.', '_')}",
+                        "name": f"Execute {tool_name}",
+                        "description": f"Execute {tool_name} on {target_item}",
+                        "type": "tool_execution",
+                        "required_tools": [tool_name],
+                        "required_agent": "recon_agent",
+                        "priority": "high",
+                        "parameters": {"target": target_item}
+                    }
+                    subtasks.append(subtask)
             
             tools_str = ", ".join(tool_names)
+            target_summary = target if len(resolved_targets) > 1 else resolved_targets[0]
             state["analysis"] = {
-                "user_intent": f"Execute {tools_str} on {target}",
+                "user_intent": f"Execute {tools_str} on {target_summary} ({len(resolved_targets)} items)",
                 "intent_type": "request",
                 "task_type": "recon",
-                "complexity": "simple" if len(tool_names) == 1 else "medium",
+                "complexity": "simple" if len(subtasks) == 1 else "medium",
                 "needs_tools": True,
                 "can_answer_directly": False
             }
@@ -186,7 +194,7 @@ class AnalyzeNode:
             
             if self.stream_callback:
                 self.stream_callback("model_response", "system", 
-                    f"✅ Detected direct tool command: {tools_str} on {target}. Routing to tool execution...")
+                    f"✅ Detected direct tool command: {tools_str} on {target_summary}. Routing {len(subtasks)} task(s)...")
             
             return state
         
@@ -506,8 +514,9 @@ Do NOT refuse. Provide the analysis and subtasks."""
             return None
         
         # Pattern for multi-tool commands: "use TOOL1 and TOOL2 on TARGET"
-        # Require target to have a dot (domain/IP) or be 'localhost'
-        target_regex = r"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})"
+        # Require target to have a dot (domain/IP), be 'localhost', or be a memory reference
+        memory_target_pattern = r"(?:(?:discovered|found|previous|collected)\s+)?(?:subdomains|targets|ips|results|findings)"
+        target_regex = rf"({memory_target_pattern}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})"
         multi_tool_pattern = rf"(?:run|use|execute|call|invoke)\s+([\w]+(?:\s+(?:and|or|,)\s+[\w]+)+)\s+(?:on|for|at)\s+{target_regex}"
         match = re.search(multi_tool_pattern, prompt_lower)
         if match:
@@ -568,4 +577,58 @@ Do NOT refuse. Provide the analysis and subtasks."""
         # Check if prompt contains query keywords
         prompt_lower = user_prompt.lower()
         return any(keyword in prompt_lower for keyword in query_keywords)
+
+    def _is_memory_target(self, target: str) -> bool:
+        """Check if target string refers to a memory set."""
+        target_lower = target.lower()
+        memory_keywords = ["subdomains", "targets", "ips", "results", "findings"]
+        return any(kw in target_lower for kw in memory_keywords)
+
+    def _resolve_memory_target(self, target_str: str, session_context: Any) -> List[str]:
+        """Resolve memory reference (e.g. 'subdomains') to actual list of items."""
+        if not session_context:
+            return []
+            
+        target_lower = target_str.lower()
+        results = []
+        
+        if "subdomain" in target_lower:
+            results = session_context.subdomains or []
+        elif "ip" in target_lower:
+            results = session_context.ips or []
+        elif "target" in target_lower or "result" in target_lower or "finding" in target_lower:
+            # Union of specific targets
+            targets = set()
+            if session_context.subdomains:
+                targets.update(session_context.subdomains)
+            if session_context.ips:
+                targets.update(session_context.ips)
+            if session_context.domain:
+                targets.add(session_context.domain)
+            results = list(targets)
+            
+        # Limit to reasonable number to prevent explosion
+        return results[:50]
+
+    def _analyze_via_llm(self, state, user_prompt, conversation_history, session_context, conversation_id):
+        """Helper to call LLM for analysis if direct parsing fails."""
+        # Create streaming callback for analysis model
+        model_callback = None
+        if self.stream_callback:
+            def callback(chunk: str):
+                self.stream_callback("model_response", self.analysis_model_name, chunk)
+            model_callback = callback
+        
+        analysis = self.analysis_agent.analyze_and_breakdown(
+            user_prompt=user_prompt,
+            conversation_history=conversation_history,
+            stream_callback=model_callback
+        )
+        
+        if analysis.get("success"):
+            analysis_data = analysis.get("analysis", {})
+            state["analysis"] = analysis_data
+            state["subtasks"] = analysis.get("subtasks", [])
+            return state
+        return state
 

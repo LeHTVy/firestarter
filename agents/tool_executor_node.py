@@ -320,10 +320,15 @@ class ToolExecutorNode:
     def _execute_single_tool(self, state: Dict, subtask: Dict, tool_name: str,
                             targets: List[str], model_callback, tool_stream_callback) -> Optional[Dict]:
         """Execute a single tool with fallback."""
-        user_prompt = state.get("user_prompt", "")
-        subtask_name = subtask.get("name", "")
-        subtask_desc = subtask.get("description", "")
-        targets_str = ", ".join(targets) if targets else "target"
+        # Build tool prompt
+        # Use target from subtask parameters if provided (set by analyze_node for memory expansion)
+        subtask_params = subtask.get("parameters", {})
+        if "target" in subtask_params:
+            effective_targets = [subtask_params["target"]]
+        else:
+            effective_targets = targets
+            
+        targets_str = ", ".join(effective_targets) if effective_targets else "target"
         
         # Build tool prompt
         tool_prompt = f"""Execute {tool_name}:
@@ -358,9 +363,9 @@ Extract parameters from context and execute the tool."""
         # FALLBACK: Direct execution
         if self.stream_callback:
             self.stream_callback("model_response", "system", 
-                f"📦 Executing {tool_name} directly...")
+                f"📦 Executing {tool_name} directly on {targets_str}...")
         
-        return self._execute_direct(tool_name, targets, subtask_desc, state, tool_stream_callback)
+        return self._execute_direct(tool_name, effective_targets, subtask_desc, state, tool_stream_callback)
     
     def _execute_direct(self, tool_name: str, targets: List[str], description: str,
                        state: Dict, tool_stream_callback) -> Dict:

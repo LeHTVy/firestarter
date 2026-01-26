@@ -17,24 +17,25 @@ Key distinctions with examples:
 ### "security_task" examples (PERFORM ACTION):
 - "scan example.com" → security_task (perform scanning action)
 - "find subdomains for X" → security_task (perform reconnaissance action)
+- "port scan the subdomains found" → security_task (ACTION on memory results)
+- "use nmap on discovered subdomains" → security_task (ACTION on memory results)
+- "attack targets from previous scan" → security_task (ACTION on memory results)
 - "attack target.com" → security_task (perform security testing)
 - "pentest hellogroup.co.za" → security_task (perform penetration testing)
 - "use whois on hellogroup.co.za" → security_task (direct tool execution command)
 - "run nmap on 192.168.1.1" → security_task (direct tool execution command)
-- "execute subfinder for example.com" → security_task (direct tool execution command)
-- "test X for vulnerabilities" → security_task (perform testing action)
+- "run subfinder for example.com" → security_task
+- "test subdomains for vulnerabilities" → security_task
 - "check if X is vulnerable" → security_task (perform security check action)
 - "enumerate ports on Y" → security_task (perform enumeration action)
 - "lookup IP for X" → security_task (OSINT is an action)
 - "do recon on Z" → security_task (perform reconnaissance action)
 
-### "memory_query" examples (RETRIEVE STORED DATA):
-- "show me the subdomains we found" → memory_query (retrieve stored data)
-- "what subdomains did you find?" → memory_query (query previous results)
-- "list the open ports" → memory_query (retrieve stored scan results)
-- "what vulnerabilities were discovered?" → memory_query (retrieve stored findings)
-- "show previous scan results" → memory_query (retrieve stored data)
-- "get the results from last scan" → memory_query (retrieve stored data)
+### "memory_query" examples (RETRIEVE STORED DATA - NO ACTION):
+- "show me the subdomains we found" → memory_query (just display data)
+- "what subdomains did you find?" → memory_query (asking for list)
+- "list the open ports" → memory_query
+- "give me the findings" → memory_query
 
 ### "question" examples (SEEK INFORMATION):
 - "What is SQL injection?" → question (seeking knowledge)
@@ -49,9 +50,10 @@ Key distinctions with examples:
 - "What does this mean?" → question (asking for explanation)
 
 ### Important patterns:
+- Action on Memory: If the user requests an action (scan, test, run) on previous results (found, discovered, etc.) → ALWAYS "security_task".
 - Direct tool commands: "use X on Y", "run X for Y", "execute X on Y" → ALWAYS "security_task"
 - Action verbs at start: "scan", "test", "attack", "pentest", "check", "run", "use", "execute", "find", "enumerate", "lookup" → Usually "security_task"
-- Retrieval patterns: "show me", "list", "get the", "what did you find", "previous results" → Usually "memory_query"
+- Retrieval patterns without action: "show me", "list", "get the", "what did you find", "previous results" → Usually "memory_query"
 - Question words: "what", "how", "why", "when", "where", "who" → Usually "question" (unless followed by action verb)
 - Imperative commands: "do X", "perform Y", "run Z" → "security_task"
 - Explanatory requests: "explain", "describe", "tell me about" → "question"
