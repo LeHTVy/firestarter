@@ -5,6 +5,7 @@ Inspired by rutx approach for simple, direct tool execution.
 """
 
 from typing import Dict, Any, Optional, Callable, List
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tools.executor import get_executor
 from agents.target_resolver import TargetSetResolver
@@ -286,6 +287,7 @@ class ToolExecutorNode:
             )
             
             # 2. Worker loop for concurrent execution from queue
+            all_worker_results = []
             with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TOOLS) as executor_pool:
                 futures = {}
                 for i in range(MAX_CONCURRENT_TOOLS):
@@ -295,15 +297,60 @@ class ToolExecutorNode:
                 for future in as_completed(futures):
                     try:
                         results = future.result()
-                        if results: tool_results.extend(results)
+                        if results: 
+                            all_worker_results.extend(results)
                     except Exception as e:
                         self.logger.error(f"DSQ Worker failed: {e}")
             
+            # 3. Aggregate results for the QA agent and memory
+            if all_worker_results:
+                # Filter successful results
+                successful_results = [r for r in all_worker_results if r.get("success")]
+                
+                # Combine results (e.g., all open ports found)
+                aggregated_data = {
+                    "total_targets": len(targets),
+                    "successful_targets": len(successful_results),
+                    "open_ports": [],
+                    "vulnerabilities": [],
+                    "technologies": [],
+                    "raw_output": f"Durable Scan Batch Complete. Scanned {len(targets)} targets. {len(successful_results)} successful."
+                }
+                
+                for r in successful_results:
+                    parsed = r.get("parsed_data", {})
+                    host = r.get("target") or r.get("host")
+                    
+                    if "open_ports" in parsed:
+                        for p in parsed["open_ports"]:
+                            p_copy = p.copy()
+                            p_copy["host"] = host
+                            aggregated_data["open_ports"].append(p_copy)
+                    
+                    if "vulnerabilities" in parsed:
+                        for v in parsed["vulnerabilities"]:
+                            v_copy = v.copy()
+                            v_copy["host"] = host
+                            aggregated_data["vulnerabilities"].append(v_copy)
+
+                # Create a master result object
+                master_result = {
+                    "tool_name": tool_name,
+                    "parameters": {"targets_count": len(targets), "tool": tool_name, "command": cmd_name},
+                    "results": aggregated_data,
+                    "success": len(successful_results) > 0,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Persist to tool_results table so QA agents can see it
+                self._store_result(master_result, state)
+                tool_results.append(master_result)
+
             # Final progress report
             progress = self.memory.scanning_queue.get_progress(self.memory.conversation_id)
             if self.stream_callback:
                 self.stream_callback("model_response", "system", 
-                    f"✅ Background scan batch complete. Total results tracked in DB: {progress['done']}/{progress['total']}.")
+                    f"✅ Background scan batch complete. Total findings promoted to Entity View: {progress['done']}/{progress['total']}.")
             
             return tool_results
 

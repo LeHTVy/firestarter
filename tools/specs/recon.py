@@ -210,4 +210,24 @@ def get_specs() -> List[ToolSpec]:
                 ),
             }
         ),
+        
+        # ─────────────────────────────────────────────────────────
+        # TECHNOLOGY DETECTION - Site Fingerprinting
+        # ─────────────────────────────────────────────────────────
+        ToolSpec(
+            name="technology_detection",
+            category=ToolCategory.RECON,
+            description="Identify technologies, CMS, and frameworks used by a target",
+            executable_names=[],
+            install_hint="Internal tool",
+            implementation="tools.implementations.web_tools.technology_detection",
+            aliases=["tech_detect", "fingerprint", "cms_detect"],
+            commands={
+                "detect": CommandTemplate(
+                    args=[],
+                    timeout=60,
+                    description="Detect technologies on target URL"
+                ),
+            }
+        ),
     ]
