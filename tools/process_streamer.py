@@ -55,13 +55,25 @@ class ProcessStreamer:
         env: Optional[Dict[str, str]],
         timeout: Optional[int]
     ) -> Generator[str, None, int]:
-        """Execute using python's pty module (Linux/macOS)."""
+        """Execute using python's pty module (Linux/macOS) with robust reading."""
         import pty
         import errno
         
         master_fd, slave_fd = pty.openpty()
         
         try:
+            try:
+                import termios
+                import tty
+                pass 
+            except ImportError:
+                pass
+
+            if env is None:
+                env = os.environ.copy()
+            if "TERM" not in env:
+                env["TERM"] = "xterm-256color"
+
             process = subprocess.Popen(
                 command,
                 stdin=slave_fd,
@@ -77,11 +89,12 @@ class ProcessStreamer:
             os.close(slave_fd)
             raise e
 
-        # Close slave fd in parent process
+        # Close slave fd in parent process so valid EOF can be detected
         os.close(slave_fd)
         
         start_time = time.time()
         buffer = []
+        process_ended = False
         
         try:
             while True:
@@ -91,17 +104,27 @@ class ProcessStreamer:
                     yield f"\n[TIMEOUT after {timeout}s]\n"
                     break
                 
+                # Check if process ended
+                if not process_ended and process.poll() is not None:
+                    process_ended = True
+                
+                # If process ended, we still need to drain the pipe until EIO
+                
                 try:
-                    # Select with timeout
-                    r, _, _ = select.select([master_fd], [], [], 0.05)
+                    r, _, _ = select.select([master_fd], [], [], 0.1)
                     
                     if master_fd in r:
+                        # Data available
                         try:
                             data = os.read(master_fd, 4096)
-                            if not data:  # EOF
+                            if not data:  
                                 break
+                            
+                            try:
+                                decoded = data.decode('utf-8')
+                            except UnicodeDecodeError:
+                                decoded = data.decode('utf-8', errors='replace')
                                 
-                            decoded = data.decode('utf-8', errors='replace')
                             for char in decoded:
                                 if char == '\r':
                                     line = "".join(buffer)
@@ -114,15 +137,16 @@ class ProcessStreamer:
                                 else:
                                     buffer.append(char)
                         except OSError as e:
-                            # EIO (Errno 5) means EOF on Linux PTY
+                            # EIO (Errno 5) means EOF on Linux PTY (slave closed)
                             if e.errno == errno.EIO:
                                 break
                             raise e
-                    
-                    # Only break if process is done AND no more data to read (checked via select)
-                    elif process.poll() is not None:
-                        break
-                        
+                    else:
+                        # No data ready
+                        if process_ended:
+                            # Process done and no data ready -> we are done
+                            break
+                            
                 except (OSError, select.error):
                     break
                     

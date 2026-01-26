@@ -589,7 +589,7 @@ def main():
                         approval_state["user_approval"] = "yes"
                         approval_state.pop("_needs_approval", None)  # Remove flag
                         
-                        console.print("[green]✅ Executing tools...[/green]\n")
+                        streaming_manager.log_message("✅ Executing tools...", style="green")
                         
                         # Continue graph execution from approval state
                         # Stream from the updated state
@@ -606,7 +606,7 @@ def main():
                                     result["knowledge_results"] = node_state.get("knowledge_results")
                     else:
                         # User rejected, skip tools and go to synthesis
-                        console.print("[yellow]⏭️  Skipping tools. Proceeding to synthesis...[/yellow]\n")
+                        streaming_manager.log_message("⏭️ Skipping tools. Proceeding to synthesis...", style="yellow")
                         
                         # Update state to skip tools
                         approval_state["user_approval"] = "no"

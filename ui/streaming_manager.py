@@ -69,13 +69,14 @@ class StreamingManager:
             Panel ID
         """
         panel_id = f"{tool_name}:{command_name}" if command_name else tool_name
-        self.tool_panels[panel_id] = ToolExecutionPanel(
-            tool_name=tool_name,
-            command_name=command_name,
-            target=target,
-            parameters=parameters
-        )
-        self._update_display()
+        if panel_id not in self.tool_panels:
+            self.tool_panels[panel_id] = ToolExecutionPanel(
+                tool_name=tool_name,
+                command_name=command_name,
+                target=target,
+                parameters=parameters
+            )
+            self._update_display()
         return panel_id
     
     def set_tool_result(self, panel_id: str, result: Dict[str, Any]):
@@ -268,6 +269,18 @@ class StreamingManager:
         self.info_panels.append(panel)
         self._update_display()
         
+    def log_message(self, message: str, style: str = "dim"):
+        """Print a static message safely while live display is running.
+        
+        Args:
+            message: Message to print
+            style: Rich style or color
+        """
+        if self.live:
+            self.live.console.print(f"[{style}]{message}[/{style}]")
+        else:
+            self.console.print(f"[{style}]{message}[/{style}]")
+
     def show_analysis(self, analysis: Dict[str, Any]):
         """Show analysis results card.
         
