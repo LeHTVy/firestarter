@@ -140,13 +140,22 @@ class ToolRegistry:
                     continue
                 
                 # If tool is new, create a full definition
+                cat_lower = spec.category.value.lower() if hasattr(spec.category, 'value') else str(spec.category).lower()
+                
+                # Determine agents based on category
+                assigned_agents = ["recon_agent"]
+                if cat_lower in ["vulnerability", "exploitation", "vuln", "exploit"]:
+                    assigned_agents = ["exploit_agent"]
+                elif cat_lower in ["web", "scanning"]:
+                    assigned_agents = ["recon_agent", "exploit_agent"]
+                
                 tool = ToolDefinition(
                     name=spec.name,
                     description=spec.description,
-                    category=spec.category.value if hasattr(spec.category, 'value') else str(spec.category),
+                    category=cat_lower,
                     risk_level="low", # Default for discovered tools
                     priority=False,   # Default
-                    assigned_agents=["recon_agent"], # Defaulting to recon
+                    assigned_agents=assigned_agents,
                     aliases=spec.aliases or [],
                     parameters=ToolSchema(type="object", properties={}, required=[]), # Default schema
                     commands={}       # We can populate this more richly later if needed

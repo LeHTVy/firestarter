@@ -46,8 +46,12 @@ class ToolSpec:
     aliases: List[str] = field(default_factory=list)
     
     def find_executable(self) -> bool:
-        """Find the tool executable on the system."""
+        """Find the tool executable on the system with enhanced path discovery."""
         import shutil
+        import os
+        from pathlib import Path
+        
+        # 1. Check standard PATH
         for exe_name in self.executable_names:
             path = shutil.which(exe_name)
             if path:
@@ -55,19 +59,38 @@ class ToolSpec:
                 self.is_available = True
                 return True
         
-        # Fallback: Check if it's a python package
-        if "python" in self.install_hint.lower():
+        # 2. Check common non-standard locations (Go, Local Bin, etc.)
+        home = str(Path.home())
+        extra_paths = [
+            os.path.join(home, "go", "bin"),
+            os.path.join(home, ".local", "bin"),
+            "/usr/local/bin",
+            "/snap/bin"
+        ]
+        
+        for exe_name in self.executable_names:
+            for base_path in extra_paths:
+                full_path = os.path.join(base_path, exe_name)
+                # Check different extensions for Windows if needed, though they are likely in PATH already
+                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                    self.executable_path = full_path
+                    self.is_available = True
+                    return True
+
+        # 3. Fallback: Check if it's a python package
+        if "pip" in self.install_hint.lower() or "python" in self.install_hint.lower():
             try:
                 import importlib.util
                 # Try name variants
                 for name in [self.name] + self.executable_names:
-                    # heuristic: standard package names don't usually have spaces or args
-                    clean_name = name.split()[0].split('-')[-1] # e.g. "python3 -m theHarvester" -> "theHarvester"
-                    if importlib.util.find_spec(clean_name):
+                    # heuristic: standard package names vs executable names
+                    # e.g. "bbot" (pkg) vs "bbot" (exe), "theHarvester" (pkg) vs "theharvester" (exe)
+                    clean_name = name.split()[0].split('-')[-1]
+                    if importlib.util.find_spec(clean_name) or importlib.util.find_spec(clean_name.lower()):
                         self.is_available = True
-                        # Don't set executable_path, signals to use -m
+                        # Don't set executable_path, signals to use -m or direct call if in path
                         return True
-            except ImportError:
+            except (ImportError, AttributeError):
                 pass
                 
         return False

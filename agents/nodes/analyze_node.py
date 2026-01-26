@@ -165,8 +165,17 @@ class AnalyzeNode:
                 )
             
             # Create subtasks for each tool AND each resolved target
+            from tools.registry import get_registry
+            tool_registry = get_registry()
+            
             subtasks = []
             for tool_name in tool_names:
+                # Resolve correct agent for this tool
+                tool_def = tool_registry.get_tool(tool_name)
+                assigned_agent = "recon_agent"  # Default fallback
+                if tool_def and tool_def.assigned_agents:
+                    assigned_agent = tool_def.assigned_agents[0]
+                
                 for target_item in resolved_targets:
                     subtask = {
                         "id": f"subtask_direct_{tool_name}_{target_item.replace('.', '_')}",
@@ -174,7 +183,7 @@ class AnalyzeNode:
                         "description": f"Execute {tool_name} on {target_item}",
                         "type": "tool_execution",
                         "required_tools": [tool_name],
-                        "required_agent": "recon_agent",
+                        "required_agent": assigned_agent,
                         "priority": "high",
                         "parameters": {"target": target_item}
                     }
