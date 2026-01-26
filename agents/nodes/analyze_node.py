@@ -1,6 +1,7 @@
 """Analyze Node - Analyzes user prompt and creates subtasks."""
 
-from typing import Dict, Any, Optional, Callable
+import re
+from typing import Dict, Any, Optional, Callable, List
 from agents.nodes.subtask_creator import SubtaskCreator
 
 
