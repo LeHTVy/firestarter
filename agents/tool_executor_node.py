@@ -331,6 +331,10 @@ class ToolExecutorNode:
         targets_str = ", ".join(effective_targets) if effective_targets else "target"
         
         # Build tool prompt
+        subtask_name = subtask.get("name", "Unknown")
+        subtask_desc = subtask.get("description", "No description")
+        user_prompt = state.get("user_prompt", "")
+        
         tool_prompt = f"""Execute {tool_name}:
 Task: {subtask_name}
 Description: {subtask_desc}
