@@ -119,13 +119,28 @@ class SynthesizeNode:
                 self.stream_callback("model_response", "system", warning_msg)
             return state
 
+        # Get current findings from memory manager to provide context to the analyzer
+        memory_findings = {}
+        if self.memory_manager:
+            ctx = self.memory_manager.get_agent_context()
+            if ctx:
+                memory_findings = {
+                    "subdomains": ctx.subdomains,
+                    "ips": ctx.ips,
+                    "open_ports": ctx.open_ports,
+                    "vulnerabilities": ctx.vulnerabilities,
+                    "technologies": ctx.technologies,
+                    "domain": ctx.domain
+                }
+
         synthesis_input = {
             "tool_results": tool_results,
             "search_results": search_results if has_real_search else None,
             "knowledge_results": knowledge_results,
             "rag_results": rag_results,
             "results_qa": results_qa,
-            "direct_answer": direct_answer_text
+            "direct_answer": direct_answer_text,
+            "memory_findings": memory_findings # Include findings already in memory
         }
         
         model_callback = None

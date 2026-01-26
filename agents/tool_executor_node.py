@@ -7,6 +7,7 @@ Inspired by rutx approach for simple, direct tool execution.
 from typing import Dict, Any, Optional, Callable, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tools.executor import get_executor
+from agents.target_resolver import TargetSetResolver
 # FeedbackLearner removed
 
 MAX_CONCURRENT_TOOLS = 5  # Maximum tools to run in parallel
@@ -35,6 +36,7 @@ class ToolExecutorNode:
         self.mode_manager = mode_manager
         self.stream_callback = stream_callback
         self.executor = get_executor()
+        self.target_resolver = TargetSetResolver(memory_manager)
         
         # Feedback tracking removed
         
@@ -245,75 +247,71 @@ class ToolExecutorNode:
         # Get targets
         targets = self._extract_targets(state, target)
         
-        # Collect all tool execution tasks
+        # Collect all tool execution tasks (Expanded by targets)
         tool_tasks = []
         for subtask in subtasks:
             if subtask.get("type") != "tool_execution":
                 continue
             tools = subtask.get("required_tools", [])
             for tool_name in tools:
-                tool_tasks.append((subtask, tool_name))
+                if targets:
+                    # FAN-OUT: Create a task for each target
+                    # Limit fan-out to prevent explosion (e.g. max 50 targets per action)
+                    max_targets = targets[:50] 
+                    for target_item in max_targets:
+                        tool_tasks.append((subtask, tool_name, target_item))
+                else:
+                    tool_tasks.append((subtask, tool_name, None))
         
         # Execute tools concurrently (max MAX_CONCURRENT_TOOLS at a time)
-        if len(tool_tasks) <= 1:
-            # Single tool - run directly
-            for subtask, tool_name in tool_tasks:
-                result = self._execute_single_tool(
-                    state, subtask, tool_name, targets,
-                    model_callback, tool_stream_callback
-                )
-                if result:
-                    tool_results.append(result)
-                    summary = self._store_result(result, state)
-                    self._track_feedback(result, tool_name, state)
-                    
-                    if self.stream_callback:
-                        status = "✅" if result.get("success") else "❌"
-                        msg = f"{status} {tool_name} completed"
-                        if summary:
-                            msg += f" ({summary})"
-                        self.stream_callback("model_response", "system", msg)
-        else:
-            # Multiple tools - run concurrently
-            if self.stream_callback:
-                self.stream_callback("model_response", "system",
-                    f"🚀 Executing {len(tool_tasks)} tool(s) concurrently (max {MAX_CONCURRENT_TOOLS})...")
-            
-            with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TOOLS) as executor:
-                futures = {}
-                for subtask, tool_name in tool_tasks:
-                    # Create per-tool stream callback for concurrent execution
-                    def create_tool_callback(tn):
-                        def callback(tool, cmd, line):
-                            if self.stream_callback:
-                                self.stream_callback("tool_output", f"{tn}", line)
-                        return callback
-                    
-                    future = executor.submit(
-                        self._execute_single_tool,
-                        state, subtask, tool_name, targets,
-                        None, create_tool_callback(tool_name)  
-                    )
-                    futures[future] = tool_name
+        if len(tool_tasks) == 0:
+            return []
+
+        if self.stream_callback:
+            msg = f"🚀 Executing {len(tool_tasks)} task(s) "
+            if len(targets) > 1:
+                msg += f"across {len(targets)} targets "
+            msg += f"concurrently (max {MAX_CONCURRENT_TOOLS})..."
+            self.stream_callback("model_response", "system", msg)
+        
+        with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TOOLS) as executor_pool:
+            futures = {}
+            for subtask, tool_name, target_item in tool_tasks:
+                # Create unique display name for the task
+                display_name = f"{tool_name} on {target_item}" if target_item else tool_name
                 
-                for future in as_completed(futures):
-                    tool_name = futures[future]
-                    try:
-                        result = future.result()
-                        if result:
-                            tool_results.append(result)
-                            summary = self._store_result(result, state)
-                            self._track_feedback(result, tool_name, state)
-                            if self.stream_callback:
-                                status = "✅" if result.get("success") else "❌"
-                                msg = f"{status} {tool_name} completed"
-                                if summary:
-                                    msg += f" ({summary})"
-                                self.stream_callback("model_response", "system", msg)
-                    except Exception as e:
+                # Create per-tool stream callback for concurrent execution
+                def create_tool_callback(dn):
+                    def callback(tool, cmd, line):
                         if self.stream_callback:
-                            self.stream_callback("model_response", "system",
-                                f"❌ {tool_name} failed: {e}")
+                            self.stream_callback("tool_output", dn, line)
+                    return callback
+                
+                future = executor_pool.submit(
+                    self._execute_single_tool,
+                    state, subtask, tool_name, [target_item] if target_item else [],
+                    None, create_tool_callback(display_name)
+                )
+                futures[future] = display_name
+            
+            for future in as_completed(futures):
+                display_name = futures[future]
+                try:
+                    result = future.result()
+                    if result:
+                        tool_results.append(result)
+                        summary = self._store_result(result, state)
+                        self._track_feedback(result, tool_name, state)
+                        if self.stream_callback:
+                            status = "✅" if result.get("success") else "❌"
+                            msg = f"{status} {tool_name} completed"
+                            if summary:
+                                msg += f" ({summary})"
+                            self.stream_callback("model_response", "system", msg)
+                except Exception as e:
+                    if self.stream_callback:
+                        self.stream_callback("model_response", "system",
+                            f"❌ {tool_name} failed: {e}")
         
         return tool_results
     
@@ -435,10 +433,14 @@ Extract parameters from context and execute the tool."""
         if verified_target and verified_target not in targets:
             targets.insert(0, verified_target)
             
-        # [DYNAMIC MEMORY RESOLUTION]
-        # Generic resolution of memory targets based on keywords
-        if self.memory_manager and self.memory_manager.session_memory:
-            self._resolve_memory_targets(state.get("user_prompt", ""), targets)
+        # [MEMORY FUSION RESOLUTION]
+        # Resolve targets using L1/L2/L3 Memory layers
+        if self.target_resolver:
+            resolved = self.target_resolver.resolve_targets(state.get("user_prompt", ""), targets)
+            if resolved:
+                # Filter out redundant roots if subdomains are present? 
+                # No, keep both for now, TargetSetResolver handles deduplication
+                targets = resolved
         
         return targets
 

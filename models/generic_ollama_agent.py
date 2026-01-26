@@ -277,6 +277,17 @@ class GenericOllamaAgent:
         context_parts = []
         
         if search_results:
+            # Existing Findings in Memory
+            memory_findings = search_results.get("memory_findings", {})
+            if memory_findings:
+                context_parts.append("## Existing Findings in Memory:\n")
+                if memory_findings.get("subdomains"):
+                    context_parts.append(f"- Subdomains ({len(memory_findings['subdomains'])}): {', '.join(memory_findings['subdomains'][:20])}...\n")
+                if memory_findings.get("ips"):
+                    context_parts.append(f"- IPs: {', '.join(memory_findings['ips'])}\n")
+                if memory_findings.get("open_ports"):
+                    context_parts.append(f"- Open Ports/Services: {len(memory_findings['open_ports'])} targets with open ports detected previously\n")
+            
             # Tool results
             tool_results = search_results.get("tool_results", [])
             if tool_results:
