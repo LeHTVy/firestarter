@@ -492,7 +492,7 @@ Extract parameters from context and execute the tool."""
         results = result.get("results", {})
         if isinstance(results, dict):
             findings = {}
-            for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies"]:
+            for key in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies", "emails", "urls"]:
                 if key in results:
                     data = results[key]
                     if data:

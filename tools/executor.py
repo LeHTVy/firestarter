@@ -323,7 +323,7 @@ class ToolExecutor:
             
             return {
                 "success": result.success,
-                "results": result.output if result.success else None,
+                "results": result.parsed_data if result.success else None,
                 "raw_output": result.output,
                 "error": result.error if not result.success else None,
                 "exit_code": result.exit_code,
@@ -391,7 +391,7 @@ class ToolExecutor:
             
             return {
                 "success": result.success,
-                "results": result.output if result.success else None,
+                "results": result.parsed_data if result.success else None,
                 "raw_output": result.output,
                 "error": result.error if not result.success else None,
                 "exit_code": result.exit_code,
