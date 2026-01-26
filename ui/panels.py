@@ -96,7 +96,7 @@ class ToolExecutionPanel:
         
         return Group(
             Text(title, style="cyan bold"),
-            Text(content)
+            Text.from_markup(content)
         )
 
 

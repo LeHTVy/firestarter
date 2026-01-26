@@ -515,8 +515,12 @@ class ToolExecutor:
                  if tool.implementation:
                      result = self._execute_implementation(tool.implementation, parameters)
                      # Since implementation is sync, we just dump the result/output to stream
-                     if stream_callback and result.get("raw_output"):
-                         stream_callback(str(result.get("raw_output")))
+                     if stream_callback:
+                         if result.get("raw_output"):
+                             stream_callback(str(result.get("raw_output")))
+                         
+                         if not result.get("success") and result.get("error"):
+                             stream_callback(f"❌ Implementation Error: {result.get('error')}")
                  else:
                      pass # Return original error
             
