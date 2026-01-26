@@ -19,6 +19,85 @@ class ConversationStore:
         self.postgres_database = os.getenv("POSTGRES_DATABASE", "firestarter_pg")
         self.postgres_user = os.getenv("POSTGRES_USER", "firestarter_ad")
         self.postgres_password = os.getenv("POSTGRES_PASSWORD", "")
+        self.create_tables()
+
+    def create_tables(self):
+        """Ensure necessary tables exist."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Conversations table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id UUID PRIMARY KEY,
+                    title TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    user_id TEXT,
+                    metadata JSONB,
+                    summary TEXT,
+                    session_id TEXT,
+                    verified_target TEXT
+                );
+            """)
+
+            # Messages table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_messages (
+                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+                    role TEXT,
+                    content TEXT,
+                    sequence_number INTEGER,
+                    metadata JSONB,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+
+            # Tool Results table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tool_results (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+                    tool_name TEXT,
+                    command TEXT,
+                    stdout TEXT,
+                    parsed_data JSONB,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+
+            # Findings table
+            # Findings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS findings (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+                    type TEXT,
+                    value TEXT,
+                    source_tool TEXT,
+                    confidence FLOAT,
+                    metadata JSONB,
+                    target TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+
+            # Indexes for performance
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_conversation_id ON findings(conversation_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_type ON findings(type);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_results_tool_name ON tool_results(tool_name);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_target ON findings(target);")
+
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            conn.rollback()
+            import warnings
+            warnings.warn(f"Failed to create tables: {e}")
+        finally:
+            conn.close()
     
     def _get_connection(self):
         """Get PostgreSQL connection."""
@@ -457,6 +536,7 @@ class ConversationStore:
         finally:
             conn.close()
     
+
     def get_conversation_by_session_id(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Get conversation by legacy session_id (for migration).
         
@@ -484,5 +564,148 @@ class ConversationStore:
             return None
         except Exception as e:
             raise Exception(f"Failed to get conversation by session_id: {e}")
+        finally:
+            conn.close()
+
+    # ==================== Findings & Tool Results ====================
+
+    def add_tool_result(self, 
+                       conversation_id: str, 
+                       tool_name: str, 
+                       command: str, 
+                       stdout: str, 
+                       parsed_data: Optional[Dict] = None) -> str:
+        """Add tool execution result.
+        
+        Args:
+            conversation_id: Conversation UUID
+            tool_name: Name of tool (e.g. nmap)
+            command: Full command run
+            stdout: Raw output
+            parsed_data: Optional parsed JSON data
+            
+        Returns:
+            Result UUID
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            result_id = str(uuid.uuid4())
+            parsed_json = json.dumps(parsed_data) if parsed_data else None
+            
+            cursor.execute("""
+                INSERT INTO tool_results (id, conversation_id, tool_name, command, stdout, parsed_data)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (result_id, conversation_id, tool_name, command, stdout, parsed_json))
+            
+            conn.commit()
+            cursor.close()
+            return result_id
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Failed to add tool result: {e}")
+        finally:
+            conn.close()
+
+    def add_finding(self, 
+                    conversation_id: str, 
+                    finding_type: str, 
+                    value: str, 
+                    source_tool: str, 
+                    confidence: float = 1.0, 
+                    metadata: Optional[Dict] = None,
+                    target: Optional[str] = None) -> str:
+        """Add a finding.
+        
+        Args:
+            conversation_id: Conversation UUID
+            finding_type: Type (subdomain, ip, vuln, etc)
+            value: The finding value (e.g. domain name, IP)
+            source_tool: Tool that found it
+            confidence: Confidence score 0.0-1.0
+            metadata: Additional info
+            
+        Returns:
+            Finding UUID
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            finding_id = str(uuid.uuid4())
+            metadata_json = json.dumps(metadata) if metadata else None
+            
+            cursor.execute("""
+                INSERT INTO findings (id, conversation_id, type, value, source_tool, confidence, metadata, target)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (finding_id, conversation_id, finding_type, value, source_tool, confidence, metadata_json, target))
+            
+            conn.commit()
+            cursor.close()
+            return finding_id
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Failed to add finding: {e}")
+        finally:
+            conn.close()
+
+    def get_findings(self, conversation_id: str, finding_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get findings for a conversation.
+        
+        Args:
+            conversation_id: Conversation UUID
+            finding_type: Optional type filter
+            
+        Returns:
+            List of findings
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = "SELECT * FROM findings WHERE conversation_id = %s"
+            params = [conversation_id]
+            
+            if finding_type:
+                query += " AND type = %s"
+                params.append(finding_type)
+                
+            query += " ORDER BY created_at DESC"
+            
+            cursor.execute(query, tuple(params))
+            
+            rows = cursor.fetchall()
+            cursor.close()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            raise Exception(f"Failed to get findings: {e}")
+        finally:
+            conn.close()
+
+    def get_tool_results(self, conversation_id: str) -> List[Dict[str, Any]]:
+        """Get tool results for a conversation.
+        
+        Args:
+            conversation_id: Conversation UUID
+            
+        Returns:
+            List of tool results
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cursor.execute("""
+                SELECT * FROM tool_results 
+                WHERE conversation_id = %s
+                ORDER BY created_at DESC
+            """, (conversation_id,))
+            
+            rows = cursor.fetchall()
+            cursor.close()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            raise Exception(f"Failed to get tool results: {e}")
         finally:
             conn.close()

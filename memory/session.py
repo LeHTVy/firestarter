@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Set
 from uuid import uuid4
 import json
+import re
+from urllib.parse import urlparse
 
 
 @dataclass
@@ -141,7 +143,6 @@ class AgentContext:
         """Add an open task (subtask not yet completed)."""
         task_id = task.get("id")
         if task_id:
-            # Remove existing task with same ID if present
             self.open_tasks = [t for t in self.open_tasks if t.get("id") != task_id]
             self.open_tasks.append(task)
             self._touch()
@@ -229,7 +230,46 @@ class AgentContext:
             parts.append(f"Vulnerabilities: {len(self.vulnerabilities)}")
         if self.tools_run:
             parts.append(f"Tools run: {', '.join(self.tools_run[-5:])}")
+        if self.tools_run:
+            parts.append(f"Tools run: {', '.join(self.tools_run[-5:])}")
         return " | ".join(parts) if parts else "No findings yet"
+
+    def get_target(self) -> Optional[str]:
+        """
+        Get the prioritized target.
+        
+        Priority order:
+        1. domain (explicitly verified)
+        2. Last active entity that looks like a domain
+        3. First IP in ips
+        """
+        if self.domain and self._is_valid_domain(self.domain):
+            return self.domain
+        
+        # Check active entities for domains
+        for entity in reversed(self.active_entities):
+            if self._is_valid_domain(entity):
+                return entity
+                
+        # Fallback to IPs
+        if self.ips and self._is_valid_ip(self.ips[0]):
+            return self.ips[0]
+            
+        return None
+    
+    def _is_valid_domain(self, domain: str) -> bool:
+        """Check if string looks like a valid domain."""
+        if not domain:
+            return False
+        pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+        return bool(re.match(pattern, domain))
+    
+    def _is_valid_ip(self, ip: str) -> bool:
+        """Check if string looks like a valid IP."""
+        if not ip:
+            return False
+        pattern = r'^(?:\d{1,3}\.){3}\d{1,3}$'
+        return bool(re.match(pattern, ip))
 
 
 @dataclass

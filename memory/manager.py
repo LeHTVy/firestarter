@@ -20,7 +20,9 @@ from memory.session import SessionMemory, AgentContext
 from memory.conversation_store import ConversationStore
 from memory.summary_compressor import SummaryCompressor
 from memory.namespace_manager import NamespaceManager
+from memory.namespace_manager import NamespaceManager
 from memory.redis_buffer import RedisBuffer
+from memory.context_manager import ContextManager
 
 # Lazy imports to avoid circular dependency
 # from rag.retriever import ConversationRetriever
@@ -71,6 +73,9 @@ class MemoryManager:
             conversation_store=self.conversation_store,
             vector_store=self.conversation_retriever.vectorstore
         )
+        
+        # New Context Manager (Turn Snapshots)
+        self.context_manager = ContextManager(self)
         
         # Current conversation/session
         self.conversation_id: Optional[str] = None
@@ -319,6 +324,23 @@ class MemoryManager:
                 topics = extractor.extract_topics(recent_messages, max_topics=5)
                 if topics:
                     self.session_memory.agent_context.add_topics(topics)
+
+        # 4. Create Immutable Snapshot (ContextManager)
+        try:
+             # Calculate turn ID (using message count / 2 roughly, or get strict count)
+             turn_id = self.conversation_store.get_message_count(conv_id) // 2
+             
+             # Create snapshot
+             self.context_manager.create_snapshot(
+                 session_id=conv_id, # Using conversation_id as session_id for consistency in v2
+                 turn_id=turn_id,
+                 user_input=user_message,
+                 model_response=assistant_message,
+                 tool_outputs=[], # TODO: Pass actual tool outputs if available in save_turn signature
+                 agent_plan=None
+             )
+        except Exception as e:
+            print(f"Snapshot creation error: {e}")
         
         # Persist agent state (PostgreSQL + Redis)
         self._persist_agent_context()

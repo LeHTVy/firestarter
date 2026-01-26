@@ -264,3 +264,131 @@ class RedisBuffer:
         except Exception as e:
             import warnings
             warnings.warn(f"Failed to clear conversation from Redis buffer: {str(e)}")
+
+    # ==================== Extended Memory (Working Memory) ====================
+
+    def add_target(self, conversation_id: str, target: str):
+        """Add a target to the active working set.
+        
+        Key: session:{id}:targets (Set)
+        """
+        if self.client is None or not target:
+            return
+            
+        try:
+            key = self._key(conversation_id, "targets")
+            self.client.sadd(key, target)
+            self.client.expire(key, self.default_ttl)
+        except Exception as e:
+            pass
+
+    def get_targets(self, conversation_id: str) -> List[str]:
+        """Get active targets."""
+        if self.client is None:
+            return []
+            
+        try:
+            key = self._key(conversation_id, "targets")
+            return list(self.client.smembers(key))
+        except Exception:
+            return []
+
+    def set_context(self, conversation_id: str, context: Dict[str, Any]):
+        """Set current session context.
+        
+        Key: session:{id}:context
+        """
+        if self.client is None:
+            return
+            
+        try:
+            key = self._key(conversation_id, "context")
+            self.client.set(key, json.dumps(context), ex=self.default_ttl)
+        except Exception:
+            pass
+            
+    def get_context(self, conversation_id: str) -> Dict[str, Any]:
+        """Get current session context."""
+        if self.client is None:
+            return {}
+            
+        try:
+            key = self._key(conversation_id, "context")
+            data = self.client.get(key)
+            return json.loads(data) if data else {}
+        except Exception:
+            return {}
+
+    def set_latest_result(self, conversation_id: str, result: Dict[str, Any]):
+        """Set latest tool result.
+        
+        Key: session:{id}:latest_results
+        """
+        if self.client is None:
+            return
+            
+        try:
+            key = self._key(conversation_id, "latest_results")
+            self.client.set(key, json.dumps(result), ex=300) # Short 5-min TTL for immediate awareness
+        except Exception:
+            pass
+
+    def set_plan(self, conversation_id: str, plan: Dict[str, Any]):
+        """Set current agent plan.
+        
+        Key: session:{id}:plan
+        """
+        if self.client is None:
+            return
+            
+        try:
+            key = self._key(conversation_id, "plan")
+            self.client.set(key, json.dumps(plan), ex=self.default_ttl)
+        except Exception:
+            pass
+    
+    def get_plan(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Get current agent plan."""
+        if self.client is None:
+            return None
+            
+        try:
+            key = self._key(conversation_id, "plan")
+            data = self.client.get(key)
+            return json.loads(data) if data else None
+        except Exception:
+            return None
+
+    def append_tool_stream(self, conversation_id: str, tool_name: str, data: str):
+        """Append to tool stream (for replay/debugging).
+        
+        Key: session:{id}:tool_stream (List)
+        """
+        if self.client is None:
+            return
+            
+        try:
+            key = self._key(conversation_id, "tool_stream")
+            entry = {
+                "tool": tool_name,
+                "data": data,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            self.client.rpush(key, json.dumps(entry))
+            self.client.ltrim(key, -100, -1) # Keep last 100 entries
+            self.client.expire(key, self.default_ttl)
+        except Exception:
+            pass
+            
+    def get_tool_stream(self, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get recent tool stream logs."""
+        if self.client is None:
+            return []
+            
+        try:
+            key = self._key(conversation_id, "tool_stream")
+            entries = self.client.lrange(key, -limit, -1)
+            return [json.loads(e) for e in entries]
+        except Exception:
+            return []
+

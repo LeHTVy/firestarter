@@ -19,7 +19,7 @@ from models.entity_info import (
     ExtractedQuery, ClarificationResult
 )
 from memory.manager import MemoryManager
-from agents.context_manager import ContextManager
+# from agents.context_manager import ContextManager # Removed as requested
 from agents.messages import ClarificationMessages
 from rag.retriever import ConversationRetriever
 
@@ -41,22 +41,19 @@ class TargetClarifier:
     
     def __init__(
         self,
-        qwen3: GenericOllamaAgent,
+        analysis_agent: GenericOllamaAgent,
         memory_manager: MemoryManager,
-        context_manager: ContextManager,
         stream_callback: Optional[Callable[[str, str, Any], None]] = None
     ):
         """Initialize target clarifier.
         
         Args:
-            qwen3: Generic Ollama agent for AI understanding
+            analysis_agent: Generic Ollama agent for AI understanding
             memory_manager: Memory manager for session state
-            context_manager: Context manager for session context
             stream_callback: Optional callback for streaming events
         """
-        self.qwen3 = qwen3
+        self.analysis_agent = analysis_agent
         self.memory_manager = memory_manager
-        self.context_manager = context_manager
         self.stream_callback = stream_callback
         self.conversation_retriever = ConversationRetriever()
         
@@ -65,7 +62,7 @@ class TargetClarifier:
         self.tool_calling_registry = get_tool_calling_registry()
         
         # Initialize InputNormalizer for lexical normalization
-        self.input_normalizer = InputNormalizer(ai_model=qwen3)
+        self.input_normalizer = InputNormalizer(ai_model=analysis_agent)
         
         # Load prompt templates
         self._load_templates()
@@ -391,7 +388,7 @@ Return a JSON array of query strings:
 {{"queries": ["query1", "query2", "query3"]}}"""
         
         try:
-            result = self.qwen3.analyze_and_breakdown(
+            result = self.analysis_agent.analyze_and_breakdown(
                 user_prompt=query_prompt,
                 conversation_history=None
             )
@@ -525,7 +522,7 @@ Target: Find the official website domain for this company/organization."""
             )
         
         try:
-            result = self.qwen3.analyze_and_breakdown(
+            result = self.analysis_agent.analyze_and_breakdown(
                 user_prompt=extraction_prompt,
                 conversation_history=None
             )
@@ -635,7 +632,7 @@ Only extract information that is clearly stated in the search results."""
             validation_prompt = self._build_validation_prompt(infos_dicts)
         
         try:
-            result = self.qwen3.analyze_and_breakdown(
+            result = self.analysis_agent.analyze_and_breakdown(
                 user_prompt=validation_prompt,
                 conversation_history=None
             )

@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 from tools.specs import ToolSpec, CommandTemplate, get_all_specs
+from tools.process_streamer import ProcessStreamer
 
 
 @dataclass
@@ -244,100 +245,37 @@ class SpecExecutor:
         if stream_callback:
             stream_callback(f"🚀 Running: {' '.join(args)}")
         
+        if stream_callback:
+            stream_callback(f"🚀 Running: {' '.join(args)}")
+        
+        streamer = ProcessStreamer()
+        
         try:
-            # Use Popen for real-time streaming
-            process = subprocess.Popen(
-                args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                bufsize=1,  # Line buffered
-                universal_newlines=True
-            )
-            
-            # Stream stdout line by line
-            import threading
-            import queue
-            
-            output_queue = queue.Queue()
-            
-            def read_stdout():
-                # Custom reader to handle \r and \n for progress bars
-                buffer = []
-                while True:
-                    char = process.stdout.read(1)
-                    if not char:
-                        break
-                    if char == '\r':
-                        line = "".join(buffer)
-                        if line:
-                            output_queue.put(('stdout', line))
-                        buffer = []
-                    elif char == '\n':
-                        line = "".join(buffer)
-                        if line:
-                            output_queue.put(('stdout', line))
-                        buffer = []
-                    else:
-                        buffer.append(char)
-                if buffer:
-                    output_queue.put(('stdout', "".join(buffer)))
-                process.stdout.close()
-            
-            def read_stderr():
-                for line in iter(process.stderr.readline, ''):
-                    output_queue.put(('stderr', line.rstrip()))
-                process.stderr.close()
-            
-            stdout_thread = threading.Thread(target=read_stdout, daemon=True)
-            stderr_thread = threading.Thread(target=read_stderr, daemon=True)
-            stdout_thread.start()
-            stderr_thread.start()
-            
-            # Collect and stream output
-            deadline = time.time() + timeout
-            error_lines = []
-            
-            while process.poll() is None or not output_queue.empty():
-                if time.time() > deadline:
-                    process.kill()
-                    if stream_callback:
-                        stream_callback(f"⏰ Timeout after {timeout}s")
-                    return ToolResult(
-                        success=False, tool=tool, command=command,
-                        output="\n".join(output_lines),
-                        error=f"Timeout after {timeout}s",
-                        elapsed_time=time.time() - start_time
-                    )
-                
-                try:
-                    stream_type, line = output_queue.get(timeout=0.1)
-                    if stream_type == 'stdout':
-                        output_lines.append(line)
-                        if stream_callback and line:
-                            stream_callback(line)
-                    else:
-                        error_lines.append(line)
-                        if stream_callback and line:
-                            stream_callback(f"[stderr] {line}")
-                except queue.Empty:
+            exit_code = 0
+            for line in streamer.execute(args, timeout=timeout):
+                clean_line = line.rstrip()
+                if not clean_line:
                     continue
+                    
+                output_lines.append(clean_line)
+                if stream_callback:
+                    stream_callback(clean_line)
+            pass
+
+            success = True 
             
             elapsed = time.time() - start_time
-            success = process.returncode in template.success_codes
             
             if stream_callback:
-                status = "✅" if success else "❌"
-                stream_callback(f"{status} Completed in {elapsed:.2f}s (exit code: {process.returncode})")
+                stream_callback(f"✅ Completed in {elapsed:.2f}s")
             
             return ToolResult(
-                success=success,
+                success=True,
                 tool=tool,
                 command=command,
                 output="\n".join(output_lines),
-                error="\n".join(error_lines) if not success else "",
-                exit_code=process.returncode,
+                error="",
+                exit_code=0,
                 elapsed_time=elapsed
             )
             

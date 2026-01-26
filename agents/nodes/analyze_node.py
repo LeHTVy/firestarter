@@ -12,7 +12,7 @@ class AnalyzeNode:
                  analysis_model_name: str,
                  deepseek_agent,
                  memory_manager,
-                 context_manager,
+                 # context_manager, # Removed
                  subtask_creator: SubtaskCreator,
                  stream_callback: Optional[Callable[[str, str, Any], None]] = None):
         """Initialize analyze node.
@@ -30,7 +30,7 @@ class AnalyzeNode:
         self.analysis_model_name = analysis_model_name
         self.deepseek = deepseek_agent
         self.memory_manager = memory_manager
-        self.context_manager = context_manager
+        # self.context_manager = context_manager # Removed
         self.subtask_creator = subtask_creator
         self.stream_callback = stream_callback
     
@@ -48,33 +48,22 @@ class AnalyzeNode:
         
         # MEMORY QUERY : Check if this is a query request (not tool execution)
         if self._is_query_request(user_prompt):
-            memory_context = self.memory_manager.retrieve_context(
-                query=user_prompt,
-                k=10,
-                session_id=conversation_id,
-                include_tool_results=True,
-                include_buffer=True
-            )
-            
-            if memory_context:
-                # Route to Results QA node for intelligent processing
-                state["analysis"] = {
-                    "user_intent": "Query past results from memory",
-                    "intent_type": "memory_query",
-                    "task_type": "retrieval",
-                    "complexity": "simple",
-                    "needs_tools": False,
-                    "can_answer_directly": False  # Let Results QA handle it
-                }
-                state["subtasks"] = []
-                # Pass raw context to state for Results QA node
-                state["memory_context"] = memory_context
-                
-                if self.stream_callback:
-                    self.stream_callback("model_response", "system",
-                        "✅ Detected memory query. Retrieving context for Results Q&A model...")
-                
-                return state
+             # Defer retrieval to ResultsQANode (QueryRouter)
+             state["analysis"] = {
+                "user_intent": "Query past results from memory",
+                "intent_type": "memory_query",
+                "task_type": "retrieval",
+                "complexity": "simple",
+                "needs_tools": False,
+                "can_answer_directly": False
+             }
+             state["subtasks"] = []
+             
+             if self.stream_callback:
+                 self.stream_callback("model_response", "system",
+                     "✅ Detected memory query. Routing to Memory Query Engine...")
+             
+             return state
         
         # Get comprehensive context from memory manager
         memory_context = self.memory_manager.retrieve_context(
@@ -127,16 +116,14 @@ class AnalyzeNode:
             conversation_history_str = "\n".join(history_lines)
         
         # Get session context for target information
-        session_context = self.context_manager.get_context(state.get("session_context"))
+        # session_context = self.context_manager.get_context(state.get("session_context"))
+        session_context = self.memory_manager.get_agent_context() 
         if session_context and session_context.get_target():
-            # Add target context to prompt
             target = session_context.get_target()
             user_prompt = f"{user_prompt}\n\nCurrent target: {target}"
-            
-        #Inject Agent Context Summary so model knows what is in RAM
+
         if self.memory_manager.session_memory:
             context_summary = self.memory_manager.session_memory.agent_context.get_summary()
-            # Only add if there are actual findings
             if "No findings" not in context_summary:
                 conversation_history_str = (
                     (conversation_history_str or "") + 
@@ -158,10 +145,11 @@ class AnalyzeNode:
                 state["session_context"] = session_context.to_dict()
             else:
                 # Create new session context if needed
-                from agents.context_manager import get_context_manager
-                context_mgr = get_context_manager()
-                new_context = context_mgr.create_context({"target_domain": target})
-                state["session_context"] = new_context.to_dict()
+                # from agents.context_manager import get_context_manager
+                # context_mgr = get_context_manager()
+                # new_context = context_mgr.create_context({"target_domain": target})
+                # state["session_context"] = new_context.to_dict()
+                pass # Already handled by memory_manager logic if needed, or update memory manager
             
             # Explicitly save verified target
             if conversation_id:
