@@ -44,12 +44,8 @@ class ProcessStreamer:
         """
         
         if sys.platform == "win32":
-            try:
-                import pywinpty  # type: ignore
-                return self._execute_winpty(command, cwd, env, timeout)
-            except ImportError:
-                return self._execute_subprocess_fallback(command, cwd, env, timeout)
-                
+            return self._execute_subprocess_fallback(command, cwd, env, timeout)
+            
         return self._execute_pty(command, cwd, env, timeout)
 
     def _execute_pty(
