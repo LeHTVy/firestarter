@@ -57,6 +57,7 @@ class ProcessStreamer:
     ) -> Generator[str, None, int]:
         """Execute using python's pty module (Linux/macOS)."""
         import pty
+        import errno
         
         master_fd, slave_fd = pty.openpty()
         
@@ -90,33 +91,41 @@ class ProcessStreamer:
                     yield f"\n[TIMEOUT after {timeout}s]\n"
                     break
                 
-                r, _, _ = select.select([master_fd], [], [], 0.1)
-                
-                if master_fd in r:
-                    try:
-                        data = os.read(master_fd, 1024).decode('utf-8', errors='replace')
-                        if not data:
-                            break # EOF
-                            
-                        for char in data:
-                            if char == '\r':
-                                line = "".join(buffer)
-                                buffer = []
-                                yield line
-                            elif char == '\n':
-                                line = "".join(buffer)
-                                buffer = []
-                                yield line
-                            else:
-                                buffer.append(char)
+                try:
+                    # Select with timeout
+                    r, _, _ = select.select([master_fd], [], [], 0.05)
+                    
+                    if master_fd in r:
+                        try:
+                            data = os.read(master_fd, 4096)
+                            if not data:  # EOF
+                                break
                                 
-                    except OSError:
+                            decoded = data.decode('utf-8', errors='replace')
+                            for char in decoded:
+                                if char == '\r':
+                                    line = "".join(buffer)
+                                    buffer = []
+                                    yield line
+                                elif char == '\n':
+                                    line = "".join(buffer)
+                                    buffer = []
+                                    yield line
+                                else:
+                                    buffer.append(char)
+                        except OSError as e:
+                            # EIO (Errno 5) means EOF on Linux PTY
+                            if e.errno == errno.EIO:
+                                break
+                            raise e
+                    
+                    # Only break if process is done AND no more data to read (checked via select)
+                    elif process.poll() is not None:
                         break
-                
-                if process.poll() is not None:
-                    if master_fd not in r:
-                        break
-        
+                        
+                except (OSError, select.error):
+                    break
+                    
         finally:
             try:
                 os.close(master_fd)
@@ -130,6 +139,7 @@ class ProcessStreamer:
                 except:
                     pass
         
+        # Flush remaining buffer
         if buffer:
             yield "".join(buffer)
             
