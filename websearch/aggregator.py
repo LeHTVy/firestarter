@@ -1,3 +1,4 @@
+from typing import Dict, Any, List, Optional
 from websearch.searxng_client import SearxNGClient
 from websearch.fetcher import WebFetcher
 from websearch.ranker import NeuralRanker
