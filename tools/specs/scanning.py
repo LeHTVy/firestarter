@@ -107,4 +107,27 @@ def get_specs() -> List[ToolSpec]:
                 ),
             }
         ),
+        # ─────────────────────────────────────────────────────────
+        # SSLSCAN - SSL/TLS Scanner
+        # ─────────────────────────────────────────────────────────
+        ToolSpec(
+            name="sslscan",
+            category=ToolCategory.SCANNING,
+            description="SSL/TLS vulnerability scanner",
+            executable_names=["sslscan"],
+            install_hint="apt install sslscan",
+            aliases=["ssl_cert_scan", "tls_scan"],
+            commands={
+                "scan": CommandTemplate(
+                    args=["{target}"],
+                    timeout=300,
+                    description="Full SSL/TLS scan"
+                ),
+                "fast": CommandTemplate(
+                    args=["--no-failed", "{target}"],
+                    timeout=120,
+                    description="Fast SSL scan"
+                ),
+            }
+        ),
     ]

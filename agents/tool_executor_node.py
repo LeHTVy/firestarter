@@ -510,8 +510,33 @@ Extract parameters from context and execute the tool."""
                             "severity": "info"
                         })
 
+                # Persist to structured database (PostgreSQL findings table)
+                conversation_id = state.get("conversation_id") or state.get("session_id")
+                target = self._get_target(state)
+                
+                for ftype, items in findings.items():
+                    if isinstance(items, list):
+                        for item in items:
+                            val = str(item.get("host", "")) if isinstance(item, dict) and "host" in item else str(item)
+                            self.memory_manager.conversation_store.add_finding(
+                                conversation_id=conversation_id,
+                                finding_type=ftype,
+                                value=val,
+                                source_tool=result.get("tool_name", ""),
+                                target=target,
+                                metadata=item if isinstance(item, dict) else None
+                            )
+                    else:
+                        # Single item
+                        self.memory_manager.conversation_store.add_finding(
+                            conversation_id=conversation_id,
+                            finding_type=ftype,
+                            value=str(items),
+                            source_tool=result.get("tool_name", ""),
+                            target=target
+                        )
+
                 self.memory_manager.update_agent_context(findings)
-                # self.context_manager.update_context(findings) # Removed as redundant/deprecated
                 
         return summary.strip()
     

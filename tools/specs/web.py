@@ -115,4 +115,22 @@ def get_specs() -> List[ToolSpec]:
                 ),
             }
         ),
+        # ─────────────────────────────────────────────────────────
+        # CURL - HTTP Header Analysis (Simple)
+        # ─────────────────────────────────────────────────────────
+        ToolSpec(
+            name="curl",
+            category=ToolCategory.WEB,
+            description="HTTP header analysis tool",
+            executable_names=["curl"],
+            install_hint="apt install curl",
+            aliases=["http_header_analysis", "header_check"],
+            commands={
+                "headers": CommandTemplate(
+                    args=["-I", "-L", "-s", "{url}"],
+                    timeout=30,
+                    description="Analyze HTTP response headers"
+                ),
+            }
+        ),
     ]
