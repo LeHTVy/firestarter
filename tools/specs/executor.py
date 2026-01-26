@@ -156,6 +156,11 @@ class SpecExecutor:
             
             success = result.returncode in template.success_codes
             
+            # Parse output
+            from tools.output_parsers import get_parser
+            parser = get_parser(tool)
+            parsed_data = parser(result.stdout.strip()) if success else {}
+
             return ToolResult(
                 success=success,
                 tool=tool,
@@ -163,7 +168,8 @@ class SpecExecutor:
                 output=result.stdout.strip(),
                 error=result.stderr.strip() if not success else "",
                 exit_code=result.returncode,
-                elapsed_time=elapsed
+                elapsed_time=elapsed,
+                parsed_data=parsed_data
             )
             
         except subprocess.TimeoutExpired:
@@ -266,6 +272,13 @@ class SpecExecutor:
             
             elapsed = time.time() - start_time
             
+            output_str = "\n".join(output_lines)
+            
+            # Parse output
+            from tools.output_parsers import get_parser
+            parser = get_parser(tool)
+            parsed_data = parser(output_str)
+
             if stream_callback:
                 stream_callback(f"✅ Completed in {elapsed:.2f}s")
             
@@ -273,10 +286,11 @@ class SpecExecutor:
                 success=True,
                 tool=tool,
                 command=command,
-                output="\n".join(output_lines),
+                output=output_str,
                 error="",
                 exit_code=0,
-                elapsed_time=elapsed
+                elapsed_time=elapsed,
+                parsed_data=parsed_data
             )
             
         except Exception as e:

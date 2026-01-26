@@ -1,158 +1,163 @@
-# AI Pentest Agent Multi-Model
+# Firestarter: Advanced Agentic Security Framework
 
-Hệ thống AI Pentest Agent hoàn toàn local sử dụng multi-model orchestration với Ollama, AutoGen, LangChain/LangGraph, LlamaIndex, và RAG.
+**Firestarter** là một framework AI Cybersecurity Agent tiên tiến, được thiết kế để thực hiện các nhiệm vụ Offensive Security (Pentest/Recon) với khả năng tự chủ cao (High Autonomy). 
 
-## Kiến trúc
+Hệ thống hoạt động hoàn toàn **Local** (với Ollama) và hỗ trợ **Live Streaming** kết quả từ các công cụ bảo mật thực tế.
 
-- **Models**: Qwen3, Nemotron-3-Nano, DeepSeek-R1, FunctionGemma (Ollama)
-- **Multi-Agent**: AutoGen với Recon Agent, Exploit Agent, Analysis Agent
-- **Orchestration**: LangGraph workflow
-- **Knowledge Base**: LlamaIndex (CVE, exploits, IOC, logs) + RAG (conversation context, tool results)
-- **Memory Architecture**: PostgreSQL (conversation graph) + pgvector (semantic memory) + Redis (short-term buffer)
-- **Tools**: 150 security tools metadata-driven (Nmap, Metasploit, Shodan, VirusTotal, etc.)
+![Architecture](https://img.shields.io/badge/Architecture-LangGraph-blue) ![Memory](https://img.shields.io/badge/Memory-Redis%20%2B%20Postgres-green) ![Tools](https://img.shields.io/badge/Tools-Hybrid%20Execution-orange)
 
-## Cài đặt
+## 🚀 Tính Năng Chính
 
-### Yêu cầu hệ thống
+### 1. **Live Process Streaming** (Real-time PTY)
+Khác với các agent thông thường chỉ hiển thị kết quả cuối cùng, Firestarter sử dụng kỹ thuật **PTY (Pseudo-Terminal)** để stream **từng dòng output** (stdout/stderr) của công cụ đang chạy trong thời gian thực.
+- **Linux/Mac**: Sử dụng native `pty`.
+- **Windows**: Hỗ trợ qua `pywinpty`.
+- **UI**: Hiển thị quá trình chạy (Scanning ports, brute-forcing...) sống động như bạn đang gõ lệnh trên terminal.
 
-- Python 3.8+
-- Ollama đã được cài đặt và chạy (https://ollama.com)
-- Các models Ollama: qwen2.5, nemotron-3-nano, deepseek-r1, functiongemma
-- **PostgreSQL với pgvector extension** (xem [PostgreSQL Setup](docs/POSTGRESQL_SETUP.md))
-- **Redis** đã được cài đặt và chạy (xem [Redis Setup](docs/REDIS_SETUP.md))
+### 2. **Hybrid Tool Execution Engine**
+Hệ thống hỗ trợ thực thi linh hoạt:
+- **CLI Binary Tools** (Nmap, GoBuster, Nuclei...): Chạy trực tiếp binary hệ thống thông qua `SpecExecutor` (định nghĩa input/output qua file YAML/Python specs).
+- **Python-based Tools** (Web Search, Scripts): Chạy native python code với fallback mechanism thông minh.
+- **Auto-Install**: Script hỗ trợ cài đặt tự động các tool còn thiếu.
 
-### Cài đặt tự động (Khuyến nghị)
+### 3. **Advanced Memory Architecture**
+Hệ thống bộ nhớ phân tầng giúp Agent "nhớ" ngữ cảnh lâu dài:
+- **Hot Memory (Redis)**: Lưu trữ trạng thái phiên làm việc (Session State), Context hiện tại, và Tool Logs buffer (tốc độ cao).
+- **Cold Memory (PostgreSQL + pgvector)**: Lưu trữ lịch sử trò chuyện, Semantic Search cho kết quả cũ, và Knowledge Base (CVEs, Exploits).
+- **Context Switching**: Hỗ trợ lưu/tải và chuyển đổi giữa các phiên pentest khác nhau mà không mất dữ liệu.
+
+### 4. **Multi-Agent Orchestration**
+Sử dụng **LangGraph** để điều phối quy trình:
+- **Intent Classifier**: Phân loại ý định người dùng.
+- **Recon Agent**: Lên kế hoạch và thực thi thu thập thông tin.
+- **Exploit Agent**: (Experimental) Thực hiện khai thác dựa trên kết quả recon.
+- **Analysis Agent**: Tổng hợp kết quả và đưa ra báo cáo.
+
+---
+
+## 🛠️ Yêu Cầu Hệ Thống
+
+*   **OS**: Linux (Ubuntu Recommended), macOS, hoặc Windows (WSL2 hoặc Native).
+*   **Python**: 3.10+
+*   **Database**:
+    *   **PostgreSQL** (với extension `vector` cho semantic search).
+    *   **Redis** (cho caching và hot memory).
+*   **AI Engine**: **Ollama** đang chạy local.
+*   **System Tools**: `git`, `curl`, `Go` (để cài đặt các tool pentest).
+
+---
+
+## 📦 Cài Đặt
+
+### 1. Clone & Setup Environment
 
 ```bash
-# Chạy script setup tự động
-./setup.sh
-```
+git clone https://github.com/LeHTVy/firestarter.git
+cd firestarter
 
-Script này sẽ:
-- Tạo virtual environment (venv)
-- Cài đặt tất cả dependencies
-- Tạo file .env mẫu
-- Tạo các thư mục cần thiết
-
-### Cài đặt thủ công
-
-```bash
 # Tạo virtual environment
-python3 -m venv venv
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Kích hoạt virtual environment
-source venv/bin/activate  # Linux/Mac
-# hoặc
-venv\Scripts\activate  # Windows
-
-# Cài đặt dependencies
-pip install --upgrade pip
+# Cài đặt Python dependencies
 pip install -r requirements.txt
-
-# Cài đặt Playwright browsers (optional)
-python -m playwright install chromium
 ```
 
-## Cấu hình
-
-### 1. Ollama Models
-
-Đảm bảo các models sau đã được pull trong Ollama:
+### 2. Cài Đặt Security Tools
+Sử dụng script cài đặt tự động để tải các công cụ cần thiết (Nmap, Go tools, etc.):
 
 ```bash
-ollama pull qwen2.5
-ollama pull nemotron-3-nano
-ollama pull deepseek-r1
-ollama pull functiongemma
+# Cấp quyền thực thi
+chmod +x scripts/install_tools.sh
+
+# Cài đặt toàn bộ (System + Python + Go tools)
+./scripts/install_tools.sh
+
+# Hoặc cài riêng lẻ
+./scripts/install_tools.sh --go      # Chỉ cài Go tools (subfinder, httpx...)
+./scripts/install_tools.sh --python  # Chỉ cài Python tools
 ```
 
-### 2. Configuration Files
+### 3. Cấu Hình Database (Redis & Postgres)
+Đảm bảo Redis và Postgres đang chạy. Cập nhật file `.env`:
 
-- `config/ollama_config.yaml`: Cấu hình kết nối Ollama
-- `config/models.yaml`: Cấu hình từng model
-- `config/autogen_config.yaml`: Cấu hình AutoGen agents
-
-### 3. PostgreSQL + Redis Setup
-
-**Bắt buộc**: Firestarter yêu cầu PostgreSQL + pgvector + Redis cho production-grade memory architecture.
-
-1. **Cài đặt PostgreSQL + pgvector**: Xem [PostgreSQL Setup Guide](docs/POSTGRESQL_SETUP.md)
-2. **Cài đặt Redis**: Xem [Redis Setup Guide](docs/REDIS_SETUP.md)
-3. **Cấu hình `.env`** với database connections:
-
-```bash
-# .env
-# PostgreSQL Configuration
+```env
+# .env file
+POSTGRES_DB=firestarter
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=password
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-POSTGRES_DATABASE=firestarter_pg
-POSTGRES_USER=firestarter_ad
-POSTGRES_PASSWORD=your_password_here
 
-# Redis Configuration
 REDIS_HOST=localhost
 REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
 ```
 
-### 4. API Keys (Optional)
-
-Thêm API keys vào file `.env`:
-
+Chạy migration để khởi tạo database schema:
 ```bash
-# .env
-SERPAPI_API_KEY=your_key_here
-SHODAN_API_KEY=your_key_here
-VIRUSTOTAL_API_KEY=your_key_here
-SECURITYTRAILS_API_KEY=your_key_here
+python scripts/init_db.py
 ```
 
-### 5. Migration từ SQLite3 (Nếu có data cũ)
-
-Nếu bạn đã có data trong SQLite3, chạy migration script:
-
+### 4. Khởi Động Ollama
+Đảm bảo bạn đã pull các model cần thiết:
 ```bash
-python scripts/migrate_chroma_sqlite_to_postgres.py
+ollama serve
+# Trong terminal khác:
+ollama pull mistral      # Hoặc model bạn chọn trong config
+ollama pull qwen2.5:14b  # Recommended cho Agent logic tốt
 ```
 
-## Sử dụng
+---
 
-### Cách 1: Sử dụng script run (Khuyến nghị)
+## 🖥️ Sử Dụng
 
-```bash
-./run.sh
-```
-
-### Cách 2: Chạy trực tiếp
+Khởi chạy Agent:
 
 ```bash
-# Kích hoạt virtual environment
-source venv/bin/activate  # Linux/Mac
-# hoặc
-venv\Scripts\activate  # Windows
-
-# Chạy chương trình
 python main.py
 ```
 
-### Kiểm tra Ollama
+### Ví dụ lệnh trong Agent CLI:
 
-Trước khi chạy, đảm bảo Ollama đang chạy:
-
-```bash
-# Kiểm tra Ollama
-curl http://localhost:11434/api/tags
-
-# Nếu chưa chạy, khởi động Ollama
-ollama serve
+```text
+> assess hellogroup.co.za
 ```
+Agent sẽ:
+1.  Phân tích yêu cầu -> Xác định là Recon task.
+2.  Lên kế hoạch (Subtasks: DNS Enum -> Subdomain Discovery -> Port Scan...).
+3.  Thực thi lần lượt các tool.
+4.  **Hiển thị Live Stream** kết quả từng tool trên giao diện.
+5.  Tổng hợp báo cáo cuối cùng.
 
-## Tính năng
+---
 
-- Multi-model orchestration không hardcode/keyword detection
-- Tool results storage và Q&A về results
-- Web search aggregation với neural ranking
-- Structured knowledge retrieval (CVE, exploits, IOC)
-- Conversation context và tool results RAG
-# firestarter
+## 🧩 Cấu Trúc Dự Án
+
+*   `agents/`: Logic của Agent, LangGraph workflow (`pentest_graph.py`), và Nodes.
+*   `tools/`:
+    *   `specs/`: Định nghĩa command-line cho tool (Nmap, Amass...).
+    *   `executor.py`: Engine thực thi (Hybrid Spec/Python).
+    *   `process_streamer.py`: Xử lý PTY streaming.
+*   `memory/`: Quản lý Redis và Postgres (`manager.py`, `session.py`).
+*   `ui/`: Giao diện dòng lệnh (`streaming_manager.py`, `panels.py`).
+*   `websearch/`: Module tìm kiếm (DuckDuckGo/SerpAPI).
+
+---
+
+## ⚠️ Troubleshooting
+
+1.  **Lỗi `Tool not found`**:
+    *   Chạy `./scripts/install_tools.sh --check` để xem tool nào thiếu.
+    *   Cài đặt thủ công tool đó và đảm bảo nó nằm trong SYSTEM PATH.
+
+2.  **Lỗi PTY trên Windows**:
+    *   Đảm bảo đã cài `pywinpty`: `pip install pywinpty`.
+    *   Nếu vẫn lỗi, Agent sẽ tự fallback sang chế độ non-interactive (không màu, không live line-by-line).
+
+3.  **Postgres Connection Refused**:
+    *   Kiểm tra service Postgres.
+    *   Kiểm tra thông tin trong `.env`.
+
+---
+
+**Happy Hacking!** 🔥

@@ -716,8 +716,59 @@ class MemoryManager:
             return domain
         
         return None
-    
-    def _persist_agent_context(self):
+
+    def update_agent_context(self, findings: Dict[str, Any]):
+        """Update agent context with findings from tools.
+        
+        Args:
+            findings: Dictionary of findings (subdomains, open_ports, etc)
+        """
+        if not self.session_memory:
+            return
+            
+        ctx = self.session_memory.agent_context
+        
+        # update subdomains
+        if "subdomains" in findings:
+            subs = findings["subdomains"]
+            if isinstance(subs, list):
+                ctx.add_subdomains(subs)
+                
+        # update IPs
+        if "ips" in findings:
+            ips = findings["ips"]
+            if isinstance(ips, list):
+                for ip in ips:
+                    ctx.add_ip(ip)
+                    
+        # update ports
+        if "open_ports" in findings:
+            ports = findings["open_ports"]
+            if isinstance(ports, list):
+                for p in ports:
+                    if isinstance(p, dict):
+                        ctx.add_port(
+                            host=p.get("host", ""),
+                            port=p.get("port"),
+                            service=p.get("service", ""),
+                            version=p.get("version", "")
+                        )
+
+        # update vulnerabilities
+        if "vulnerabilities" in findings:
+            vulns = findings["vulnerabilities"]
+            if isinstance(vulns, list):
+                for v in vulns:
+                    if isinstance(v, dict):
+                        ctx.add_vulnerability(
+                            vuln_type=v.get("type", "unknown"),
+                            target=v.get("target", ""),
+                            severity=v.get("severity", "medium"),
+                            cve=v.get("cve", ""),
+                            details=v.get("details", {})
+                        )
+                        
+        self._persist_agent_context()
         """Persist agent context to PostgreSQL and Redis.
         
         This ensures findings (subdomains, IPs, ports, vulnerabilities) are saved

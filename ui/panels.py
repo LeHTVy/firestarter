@@ -94,11 +94,9 @@ class ToolExecutionPanel:
         
         content = "\n".join(content_lines)
         
-        return Panel(
-            content,
-            title=f"[cyan]{title}[/cyan]",
-            border_style="cyan",
-            expand=False
+        return Group(
+            Text(title, style="cyan bold"),
+            Text(content)
         )
 
 
