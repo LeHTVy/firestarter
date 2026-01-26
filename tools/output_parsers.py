@@ -63,6 +63,9 @@ class ToolOutputParser:
     def parse_whois(stdout: str) -> Dict[str, Any]:
         """Parse WHOIS output."""
         # WHOIS is unstructured, just return text but maybe extract emails
+        if "Malformed request" in stdout or "No match" in stdout or "No WHOIS" in stdout:
+             return {"error": "WHOIS lookup failed or no data found", "raw": stdout}
+             
         emails = set(re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', stdout))
         return {
             "emails": list(emails),

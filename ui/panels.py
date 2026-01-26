@@ -38,9 +38,7 @@ class ToolExecutionPanel:
     def add_output(self, line: str):
         """Add output line."""
         self.output_lines.append(line)
-        # Keep only last N lines
-        if len(self.output_lines) > self.max_lines:
-            self.output_lines = self.output_lines[-self.max_lines:]
+        # Store all lines (no truncation)
     
     def set_result(self, result: Dict[str, Any]):
         """Set final execution result.
@@ -85,12 +83,9 @@ class ToolExecutionPanel:
                 content_lines.append(f"[bold red]✗ Error: {error}[/bold red]")
         
         content_lines.append("") 
-        display_count = 60
-        for line in self.output_lines[-display_count:]:  
+        # Show ALL output lines
+        for line in self.output_lines:  
             content_lines.append(f"  {line}")
-        
-        if len(self.output_lines) > display_count:
-            content_lines.append(f"  [dim]... ({len(self.output_lines) - display_count} more lines)[/dim]")
         
         content = "\n".join(content_lines)
         

@@ -73,7 +73,11 @@ def main():
     # 3. Test DNS Enum (Fast Python implementation or dig)
     test_tool("dns_enum", {"domain": target})
     
-    # 4. Test Nmap Quick (Should take >5 seconds usually)
+    # 4. Test Amass (Mass)
+    print("\n[Optional] Testing Amass...")
+    test_tool("amass", {"domain": target, "mode": "passive"})
+
+    # 5. Test Nmap Quick (Should take >5 seconds usually)
     # Note: Requires 'nmap' installed
     # Using 'quick_scan' implies specifically checking common ports
     test_tool("nmap_scan", {"target": target, "options": "-F"}) # -F = Fast scan (100 ports)
