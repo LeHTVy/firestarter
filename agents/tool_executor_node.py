@@ -517,7 +517,17 @@ Extract parameters from context and execute the tool."""
                 for ftype, items in findings.items():
                     if isinstance(items, list):
                         for item in items:
-                            val = str(item.get("host", "")) if isinstance(item, dict) and "host" in item else str(item)
+                            # Smarter value extraction based on finding type
+                            if isinstance(item, dict):
+                                if ftype == "open_ports" and "host" in item and "port" in item:
+                                    val = f"{item['host']}:{item['port']}"
+                                elif ftype == "vulnerabilities" and "type" in item:
+                                    val = f"{item['type']} on {item.get('target', 'unknown')}"
+                                else:
+                                    val = str(item.get("host", "")) or str(item.get("value", "")) or str(item)
+                            else:
+                                val = str(item)
+
                             self.memory_manager.conversation_store.add_finding(
                                 conversation_id=conversation_id,
                                 finding_type=ftype,

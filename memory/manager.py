@@ -463,8 +463,11 @@ class MemoryManager:
                 ctx.add_port(
                     host=port_info.get("host", ""),
                     port=port_info.get("port", 0),
+                    protocol=port_info.get("protocol", "tcp"),
                     service=port_info.get("service", ""),
-                    version=port_info.get("version", "")
+                    ip=port_info.get("ip", ""),
+                    version=port_info.get("version", ""),
+                    fingerprint=port_info.get("fingerprint", "")
                 )
         
         # Update vulnerabilities

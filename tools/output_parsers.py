@@ -18,46 +18,50 @@ class ToolOutputParser:
 
     @staticmethod
     def parse_nmap(stdout: str) -> Dict[str, Any]:
-        """Parse nmap output."""
-        open_ports = {} # host -> list of ports
+        """Parse nmap output with service/version detection."""
+        open_ports = []
+        current_host = None
         current_ip = None
         
         lines = stdout.split('\n')
         for line in lines:
-            # Detect Nmap scan report for <host>
+            line = line.strip()
+            # Detect Nmap scan report for <host> (<ip>)
             if "Nmap scan report for" in line:
                 parts = line.split()
-                # Format: Nmap scan report for example.com (1.2.3.4)
+                # Format: Nmap scan report for host.com (1.2.3.4)
                 # or: Nmap scan report for 1.2.3.4
                 ip_match = re.search(r'\(([\d\.]+)\)', line)
                 if ip_match:
                     current_ip = ip_match.group(1)
+                    host_part = line.replace("Nmap scan report for ", "").split(" (")[0]
+                    current_host = host_part if host_part != current_ip else current_ip
                 else:
-                    # try getting last part if it looks like IP
                     last = parts[-1]
                     if re.match(r'^[\d\.]+$', last):
                         current_ip = last
+                        current_host = last
             
-            # Detect open ports: 80/tcp open http
-            if "/tcp" in line and "open" in line and current_ip:
-                port_part = line.split('/')[0]
-                if port_part.isdigit():
-                    port = int(port_part)
-                    if current_ip not in open_ports:
-                        open_ports[current_ip] = []
-                    open_ports[current_ip].append(port)
-        
-        # Flatten for firestarter schema (ip -> ports)
-        # return {"open_ports": open_ports}
-        
-        # Current firestarter expects "open_ports": [{"host": "...", "port": ...}] or simple list
-        # Let's standardize to:
-        findings = []
-        for host, ports in open_ports.items():
-            for port in ports:
-                findings.append({"host": host, "port": port})
+            # Detect open ports: 80/tcp open http Apache httpd 2.4.41
+            # 80/tcp open  http    Apache httpd 2.4.41 ((Ubuntu))
+            port_match = re.match(r'^(\d+)/(tcp|udp)\s+open\s+([^\s]+)(?:\s+(.*))?$', line)
+            if port_match and current_ip:
+                port = int(port_match.group(1))
+                protocol = port_match.group(2)
+                service = port_match.group(3)
+                banner = port_match.group(4) or ""
                 
-        return {"open_ports": findings}
+                open_ports.append({
+                    "host": current_host,
+                    "ip": current_ip,
+                    "port": port,
+                    "protocol": protocol,
+                    "service": service,
+                    "version": banner.strip(),
+                    "fingerprint": f"{service} {banner}".strip()
+                })
+        
+        return {"open_ports": open_ports}
 
     @staticmethod
     def parse_whois(stdout: str) -> Dict[str, Any]:

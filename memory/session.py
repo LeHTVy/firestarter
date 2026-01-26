@@ -43,7 +43,7 @@ class AgentContext:
     dns_records: List[Dict] = field(default_factory=list)
     
     # Phase 2: Scan findings
-    open_ports: List[Dict] = field(default_factory=list)  # {port, service, version, host}
+    open_ports: List[Dict] = field(default_factory=list)  # {port, host, ip, protocol, service, version, fingerprint}
     services: List[Dict] = field(default_factory=list)
     directories: List[str] = field(default_factory=list)
     endpoints: List[str] = field(default_factory=list)
@@ -93,9 +93,17 @@ class AgentContext:
             self.ips.append(ip)
             self._touch()
     
-    def add_port(self, host: str, port: int, service: str = "", version: str = ""):
+    def add_port(self, host: str, port: int, protocol: str = "tcp", service: str = "", ip: str = "", version: str = "", fingerprint: str = ""):
         """Add an open port finding."""
-        entry = {"host": host, "port": port, "service": service, "version": version}
+        entry = {
+            "host": host, 
+            "ip": ip or host, # Fallback to host if ip unknown
+            "port": port, 
+            "protocol": protocol,
+            "service": service, 
+            "version": version,
+            "fingerprint": fingerprint
+        }
         if entry not in self.open_ports:
             self.open_ports.append(entry)
             self._touch()
