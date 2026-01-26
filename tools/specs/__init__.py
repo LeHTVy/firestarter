@@ -84,18 +84,28 @@ class ToolSpec:
                     return True
 
         # 3. Fallback: Check if it's a python package
-        if "pip" in self.install_hint.lower() or "python" in self.install_hint.lower():
+        if "pip" in self.install_hint.lower() or "python" in self.install_hint.lower() or self.name.lower() in ["theharvester", "bbot"]:
             try:
                 import importlib.util
                 # Try name variants
                 for name in [self.name] + self.executable_names:
                     # heuristic: standard package names vs executable names
                     # e.g. "bbot" (pkg) vs "bbot" (exe), "theHarvester" (pkg) vs "theharvester" (exe)
-                    clean_name = name.split()[0].split('-')[-1]
+                    clean_name = name.split()[0].split('-')[-1].replace('.', '_')
                     if importlib.util.find_spec(clean_name) or importlib.util.find_spec(clean_name.lower()):
                         self.is_available = True
-                        # Don't set executable_path, signals to use -m or direct call if in path
                         return True
+                        
+                # Additional check: try to import directly or check common names
+                import importlib
+                for name in ["theHarvester", "theharvester", "bbot"]:
+                     if self.name.lower() == name.lower():
+                         try:
+                             importlib.import_module(name)
+                             self.is_available = True
+                             return True
+                         except ImportError:
+                             continue
             except (ImportError, AttributeError):
                 pass
                 

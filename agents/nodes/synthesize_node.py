@@ -145,8 +145,10 @@ class SynthesizeNode:
         
         model_callback = None
         if self.stream_callback:
+            # Use the actual model name if possible, fallback to synthesis_agent
+            model_label = getattr(self.deepseek, "model_name", "synthesis_agent").replace(":", "_")
             def callback(chunk: str):
-                self.stream_callback("model_response", "deepseek", chunk)
+                self.stream_callback("model_response", model_label, chunk)
             model_callback = callback
         
         answer = self.deepseek.synthesize_answer(

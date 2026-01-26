@@ -145,8 +145,8 @@ def get_specs() -> List[ToolSpec]:
             name="theHarvester",
             category=ToolCategory.RECON,
             description="OSINT tool for email and subdomain harvesting",
-            executable_names=["theHarvester", "theharvester"], 
-            install_hint="pip install theHarvester",
+            executable_names=["theHarvester", "theharvester", "theHarvester.py"], 
+            install_hint="pip install git+https://github.com/laramies/theHarvester.git",
             aliases=["harvester", "email_harvester", "theharvester", "email_harvesting"],
             commands={
                 "enum": CommandTemplate(

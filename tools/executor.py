@@ -366,10 +366,18 @@ class ToolExecutor:
                 return {"success": False, "error": f"Tool '{tool_name}' not found in specs"}
             
             if not spec.is_available:
+                # [FIX] If it's not available but has an implementation, fall back instead of erroring
+                if spec.implementation:
+                    return {"success": False, "error": "fallback_to_implementation"}
+                
                 error = f"⚠️ TOOL NOT INSTALLED: {tool_name}. {spec.install_hint}"
                 if stream_callback:
                     stream_callback(error)
                 return {"success": False, "error": error}
+            
+            # [FIX] Tools like web_search have no executable but have an implementation
+            if spec.implementation and not spec.executable_path:
+                return {"success": False, "error": "fallback_to_implementation"}
             
             # Determine command to use
             if command_name and command_name in spec.commands:
@@ -508,9 +516,13 @@ class ToolExecutor:
             result = self._execute_via_specs_streaming(tool_name, command_name, parameters, stream_callback)
             
             # If not found in specs, try legacy implementation
-            if not result.get("success") and "not found in specs" in result.get("error", ""):
+            if not result.get("success") and (
+                "not found in specs" in result.get("error", "") or
+                result.get("error") == "fallback_to_implementation"
+            ):
                  if stream_callback:
-                     stream_callback(f"⚠️ Tool '{tool_name}' not found in specs, falling back to Python implementation...")
+                     if result.get("error") != "fallback_to_implementation":
+                         stream_callback(f"⚠️ Tool '{tool_name}' not found in specs, falling back to Python implementation...")
                  
                  if tool.implementation:
                      result = self._execute_implementation(tool.implementation, parameters)

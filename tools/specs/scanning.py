@@ -21,30 +21,36 @@ def get_specs() -> List[ToolSpec]:
             aliases=["nmap", "ps", "port_scan"],
             commands={
                 "quick": CommandTemplate(
-                    args=["-T4", "-F", "{target}"],
+                    args=["-T4", "-F", "-Pn", "{target}"],
                     timeout=120,
-                    description="Fast scan of common ports"
+                    description="Fast scan of common ports (skips ping)"
                 ),
                 "full": CommandTemplate(
-                    args=["-T4", "-p-", "{target}"],
+                    args=["-T4", "-p-", "-Pn", "{target}"],
                     timeout=1800,
-                    description="Full port scan"
+                    description="Full port scan (skips ping)"
                 ),
                 "service": CommandTemplate(
-                    args=["-sV", "-T4", "{target}"],
+                    args=["-sV", "-T4", "-Pn", "{target}"],
                     timeout=600,
-                    description="Service version detection"
+                    description="Service version detection (skips ping)"
+                ),
+                "comprehensive": CommandTemplate(
+                    args=["-sV", "-Pn", "-O", "-T4", "{target}"],
+                    timeout=900,
+                    requires_sudo=True,
+                    description="Service detection, skips ping, and OS detection"
                 ),
                 "os": CommandTemplate(
-                    args=["-O", "-T4", "{target}"],
+                    args=["-O", "-T4", "-Pn", "{target}"],
                     timeout=300,
                     requires_sudo=True,
-                    description="OS detection"
+                    description="OS detection (skips ping)"
                 ),
                 "vuln": CommandTemplate(
-                    args=["--script", "vuln", "-T4", "{target}"],
+                    args=["--script", "vuln", "-T4", "-Pn", "{target}"],
                     timeout=600,
-                    description="Vulnerability scan"
+                    description="Vulnerability scan (skips ping)"
                 ),
                 "stealth": CommandTemplate(
                     args=["-sS", "-T2", "-Pn", "{target}"],

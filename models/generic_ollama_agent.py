@@ -280,13 +280,23 @@ class GenericOllamaAgent:
             # Existing Findings in Memory
             memory_findings = search_results.get("memory_findings", {})
             if memory_findings:
-                context_parts.append("## Existing Findings in Memory:\n")
+                context_parts.append("## Existing Findings in Memory (Aggregate):\n")
                 if memory_findings.get("subdomains"):
-                    context_parts.append(f"- Subdomains ({len(memory_findings['subdomains'])}): {', '.join(memory_findings['subdomains'][:20])}...\n")
+                    subs = memory_findings['subdomains']
+                    context_parts.append(f"- Subdomains ({len(subs)} found): {', '.join(subs[:50])}{' ...' if len(subs) > 50 else ''}\n")
                 if memory_findings.get("ips"):
                     context_parts.append(f"- IPs: {', '.join(memory_findings['ips'])}\n")
                 if memory_findings.get("open_ports"):
-                    context_parts.append(f"- Open Ports/Services: {len(memory_findings['open_ports'])} targets with open ports detected previously\n")
+                    ports = memory_findings['open_ports']
+                    context_parts.append(f"- Open Ports/Services ({len(ports)}): \n")
+                    # List the actual found ports so the model can see them
+                    for p in ports[:50]:
+                        if isinstance(p, dict):
+                            context_parts.append(f"  * {p.get('host') or p.get('ip')}:{p.get('port')} ({p.get('service')} {p.get('version', '')})\n")
+                        else:
+                            context_parts.append(f"  * {p}\n")
+                    if len(ports) > 50:
+                        context_parts.append(f"  * (+{len(ports)-50} more findings in database)\n")
             
             # Tool results
             tool_results = search_results.get("tool_results", [])

@@ -249,7 +249,9 @@ class SpecExecutor:
         output_lines = []
         
         if stream_callback:
-            stream_callback(f"🚀 Running: {' '.join(args)}")
+            # Filter out None values to prevent join error
+            cmd_str = ' '.join([str(a) for a in args if a is not None])
+            stream_callback(f"🚀 Running: {cmd_str}")
         
         streamer = ProcessStreamer()
         
@@ -308,7 +310,16 @@ class SpecExecutor:
         params: Dict[str, Any]
     ) -> List[str]:
         """Build command arguments from template and params."""
-        args = [spec.executable_path]
+        # Start with executable or None (implementation tools)
+        args = []
+        if spec.executable_path:
+            args.append(spec.executable_path)
+        elif spec.implementation:
+            # For internal implementations, we don't have a binary path
+            pass
+        else:
+             # Fallback to name if not found but marked as available (system path)
+             args.append(spec.name)
         
         # Parameter fallbacks - allow common parameter aliases
         normalized_params = dict(params)
