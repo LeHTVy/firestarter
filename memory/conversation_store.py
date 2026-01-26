@@ -84,11 +84,31 @@ class ConversationStore:
                 );
             """)
 
+            # Scan Tasks table for durable queue
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS scan_tasks (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+                    host TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending', -- pending, scanning, done, error
+                    tool_name TEXT,
+                    command_name TEXT,
+                    parameters JSONB,
+                    result JSONB,
+                    error TEXT,
+                    priority INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+
             # Indexes for performance
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_conversation_id ON findings(conversation_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_type ON findings(type);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_results_tool_name ON tool_results(tool_name);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_target ON findings(target);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scan_tasks_conversation_id ON scan_tasks(conversation_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scan_tasks_status ON scan_tasks(status);")
 
             conn.commit()
             cursor.close()

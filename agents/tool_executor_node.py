@@ -265,7 +265,49 @@ class ToolExecutorNode:
         else:
             effective_targets = targets
 
-        # Collect all tool execution tasks (Expanded by targets)
+        # Fan-out / DSQ Strategy
+        # If targets > 10, offload to Durable Scanning Queue (DSQ) for persistence
+        use_dsq = len(targets) > 10 and is_scan_task and hasattr(self.memory, 'scanning_queue')
+        
+        if use_dsq:
+            if self.stream_callback:
+                self.stream_callback("model_response", "system", 
+                    f"📦 Large target list ({len(targets)}) detected. Offloading to Durable Scanning Queue (PostgreSQL)...")
+            
+            # 1. Add targets to queue
+            # We assume the first subtask's tool for now as a simple implementation
+            tool_name = subtasks[0].get("required_tools", [scan_tools[0]])[0]
+            cmd_name = subtasks[0].get("command", "quick")
+            self.memory.scanning_queue.add_targets(
+                self.memory.conversation_id,
+                targets,
+                tool_name,
+                cmd_name
+            )
+            
+            # 2. Worker loop for concurrent execution from queue
+            with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TOOLS) as executor_pool:
+                futures = {}
+                for i in range(MAX_CONCURRENT_TOOLS):
+                    future = executor_pool.submit(self._dsq_worker, state, tool_stream_callback)
+                    futures[future] = f"DSQ_Worker_{i}"
+                
+                for future in as_completed(futures):
+                    try:
+                        results = future.result()
+                        if results: tool_results.extend(results)
+                    except Exception as e:
+                        self.logger.error(f"DSQ Worker failed: {e}")
+            
+            # Final progress report
+            progress = self.memory.scanning_queue.get_progress(self.memory.conversation_id)
+            if self.stream_callback:
+                self.stream_callback("model_response", "system", 
+                    f"✅ Background scan batch complete. Total results tracked in DB: {progress['done']}/{progress['total']}.")
+            
+            return tool_results
+
+        # Collect all tool execution tasks (Standard Fan-out for small lists)
         tool_tasks = []
         for subtask in subtasks:
             if subtask.get("type") != "tool_execution":
@@ -641,3 +683,58 @@ Extract parameters from context and execute the tool."""
             if line:
                  self.stream_callback("model_response", "tool_stdout", prefix + line)
         return callback
+
+    def _dsq_worker(self, state: Dict, tool_stream_callback) -> List[Dict]:
+        """Worker to consume tasks from Durable Scanning Queue."""
+        results = []
+        while True:
+            task = self.memory.scanning_queue.claim_task(self.memory.conversation_id)
+            if not task:
+                break
+            
+            task_id = task["id"]
+            host = task["host"]
+            tool_name = task["tool_name"]
+            cmd_name = task["command_name"]
+            
+            display_name = f"DSQ: {tool_name} on {host}"
+            self.stream_callback("model_response", "system", f"🔍 Scanning {host}...")
+            
+            # Wrap callback to route to the correct UI stream
+            def wrap_cb(tool, cmd, line):
+                if self.stream_callback:
+                    self.stream_callback("tool_output", display_name, line)
+            
+            # Create a mock subtask for the executor
+            subtask = {
+                "name": f"Scan {host}",
+                "type": "tool_execution",
+                "required_tools": [tool_name],
+                "command": cmd_name,
+                "parameters": task.get("parameters", {})
+            }
+            
+            # Direct execution
+            result = self._execute_single_tool(
+                state, subtask, tool_name, [host], 
+                None, wrap_cb
+            )
+            
+            if result:
+                results.append(result)
+                # Update DB status
+                self.memory.scanning_queue.update_result(
+                    task_id, 
+                    success=result.get("success", False),
+                    result=result.get("parsed_data", {}),
+                    error=result.get("error")
+                )
+                
+                # Report finding to user
+                if result.get("success") and result.get("parsed_data"):
+                    ports = result.get("parsed_data", {}).get("open_ports", [])
+                    if ports:
+                        self.stream_callback("model_response", "system", 
+                            f"✨ Finding: {host} has open ports: {', '.join([str(p['port']) for p in ports])}")
+            
+        return results

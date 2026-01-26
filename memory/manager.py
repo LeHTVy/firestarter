@@ -23,6 +23,7 @@ from memory.namespace_manager import NamespaceManager
 from memory.namespace_manager import NamespaceManager
 from memory.redis_buffer import RedisBuffer
 from memory.context_manager import ContextManager
+from memory.scanning_queue import ScanningQueue
 
 # Lazy imports to avoid circular dependency
 # from rag.retriever import ConversationRetriever
@@ -76,6 +77,7 @@ class MemoryManager:
         
         # New Context Manager (Turn Snapshots)
         self.context_manager = ContextManager(self)
+        self.scanning_queue = ScanningQueue(self.conversation_store)
         
         # Current conversation/session
         self.conversation_id: Optional[str] = None

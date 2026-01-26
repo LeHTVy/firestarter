@@ -130,4 +130,28 @@ def get_specs() -> List[ToolSpec]:
                 ),
             }
         ),
+        
+        # ─────────────────────────────────────────────────────────
+        # NAABU - High-speed Port Scanner
+        # ─────────────────────────────────────────────────────────
+        ToolSpec(
+            name="naabu",
+            category=ToolCategory.SCANNING,
+            description="Fast port discovery tool written in Go",
+            executable_names=["naabu"],
+            install_hint="go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest",
+            aliases=["naabu_scan", "fast_port_scan"],
+            commands={
+                "scan": CommandTemplate(
+                    args=["-host", "{target}", "-p", "-", "-silent"],
+                    timeout=600,
+                    description="Full port scan"
+                ),
+                "top": CommandTemplate(
+                    args=["-host", "{target}", "-top-ports", "100", "-silent"],
+                    timeout=120,
+                    description="Top 100 ports scan"
+                ),
+            }
+        ),
     ]
