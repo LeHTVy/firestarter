@@ -292,7 +292,7 @@ class ToolExecutorNode:
                     future = executor.submit(
                         self._execute_single_tool,
                         state, subtask, tool_name, targets,
-                        None, create_tool_callback(tool_name)  # Pass tool callback for streaming
+                        None, create_tool_callback(tool_name)  
                     )
                     futures[future] = tool_name
                 

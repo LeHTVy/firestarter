@@ -7,17 +7,17 @@ class RecommendToolsNode:
     """Node for recommending tools to user (Human in the Loop)."""
     
     def __init__(self,
-                 context_manager,
+                 memory_manager,
                  mode_manager,
                  stream_callback: Optional[Callable[[str, str, Any], None]] = None):
         """Initialize recommend tools node.
         
         Args:
-            context_manager: Context manager instance
+            memory_manager: Memory manager instance
             mode_manager: Mode manager instance
             stream_callback: Optional streaming callback
         """
-        self.context_manager = context_manager
+        self.memory_manager = memory_manager
         self.mode_manager = mode_manager
         self.stream_callback = stream_callback
     
@@ -40,11 +40,10 @@ class RecommendToolsNode:
             analysis = {}
         conversation_id = state.get("conversation_id") or state.get("session_id")
         
-        # Get target from session context
-        session_context = self.context_manager.get_context(state.get("session_context"))
-        target = None
-        if session_context:
-            target = session_context.get_target()
+        # Get target from session context via memory manager
+        target = self.memory_manager.get_verified_target(conversation_id=conversation_id)
+        if not target and self.memory_manager.session_memory:
+             target = self.memory_manager.session_memory.agent_context.get_target()
         
         # Get current execution mode
         execution_mode = self.mode_manager.get_mode(conversation_id)

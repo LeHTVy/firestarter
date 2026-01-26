@@ -12,19 +12,16 @@ class TargetCheckNode:
     
     def __init__(self,
                  memory_manager,
-                 context_manager,
                  input_normalizer,
                  stream_callback: Optional[Callable[[str, str, Any], None]] = None):
         """Initialize target check node.
         
         Args:
             memory_manager: Memory manager for verified targets
-            context_manager: Context manager for session context
             input_normalizer: Input normalizer for target extraction
             stream_callback: Optional callback for streaming events
         """
         self.memory_manager = memory_manager
-        self.context_manager = context_manager
         self.input_normalizer = input_normalizer
         self.stream_callback = stream_callback
     
@@ -119,10 +116,9 @@ class TargetCheckNode:
     
     def _update_session_context(self, state: Dict[str, Any], target: str) -> None:
         """Update session context with verified target."""
-        session_context = self.context_manager.get_context()
-        if session_context:
-            session_context = session_context.merge_with({"target_domain": target})
-            state["session_context"] = session_context.to_dict()
+        if self.memory_manager.session_memory:
+             self.memory_manager.session_memory.agent_context.domain = target
+             state["session_context"] = self.memory_manager.session_memory.agent_context.to_dict()
     
     def _is_confirmation(self, user_prompt: str) -> bool:
         """Check if user input is a confirmation."""
