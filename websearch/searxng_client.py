@@ -16,7 +16,10 @@ class SearxNGClient:
             engines: List of engines to query (default: all active in SearxNG)
         """
         self.base_url = base_url.rstrip('/')
-        self.engines = engines or []
+        if isinstance(engines, str):
+            self.engines = [engines]
+        else:
+            self.engines = [str(e) for e in (engines or []) if e]
         self.logger = logging.getLogger(__name__)
 
     def search(self, query: str, num_results: int = 10, **kwargs) -> Dict[str, Any]:
