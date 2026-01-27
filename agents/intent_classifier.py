@@ -62,16 +62,22 @@ OBVIOUS_ACTION_VERBS = [
 class IntentClassifier:
     """Classifies user intent as question or request."""
     
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, model_name: Optional[str] = None, config_path: Optional[Path] = None):
         """Initialize intent classifier.
         
         Args:
+            model_name: Optional name of Ollama model to use
             config_path: Path to Ollama config file
         """
         self.config = load_config(config_path) if config_path else self._load_default_config()
-        # Use Mistral config (replacing Qwen3)
-        self.model_config = self.config['models'].get('mistral', {
-            'model_name': 'mistral:latest',
+        
+        # Use provided model_name or fallback to config
+        default_model = self.config['models'].get('mistral', {}).get('model_name', 'mistral:latest')
+        self.model_name = model_name or default_model
+        
+        # Extract model configuration from health/config or use defaults
+        self.model_config = self.config['models'].get(self.model_name.split(':')[0], {
+            'model_name': self.model_name,
             'temperature': 0.85,
             'top_p': 0.95,
             'top_k': 50,
@@ -79,9 +85,9 @@ class IntentClassifier:
         })
         self.ollama_base_url = self.config['ollama']['base_url']
         
-        # Initialize LLM client (CRITICAL FIX)
+        # Initialize LLM client
         self.llm_client = OllamaLLMClient(
-            model_name=self.model_config['model_name'],
+            model_name=self.model_name,
             base_url=self.ollama_base_url,
             config_path=config_path,
             temperature=self.model_config.get('temperature', 0.85),

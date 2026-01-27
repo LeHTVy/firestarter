@@ -7,19 +7,19 @@ class SynthesizeNode:
     """Node for synthesizing final answer from all sources."""
     
     def __init__(self,
-                 deepseek_agent,
+                 synthesis_agent,
                  tool_executor_node,
                  memory_manager=None,
                  stream_callback: Optional[Callable[[str, str, Any], None]] = None):
         """Initialize synthesize node.
         
         Args:
-            deepseek_agent: DeepSeek agent for synthesis
+            synthesis_agent: Synthesis agent for final answer generation
             tool_executor_node: Tool executor node (for result analyzer)
             memory_manager: Optional memory manager for historical context
             stream_callback: Optional streaming callback
         """
-        self.deepseek = deepseek_agent
+        self.synthesis_agent = synthesis_agent
         self.tool_executor_node = tool_executor_node
         self.memory_manager = memory_manager
         self.stream_callback = stream_callback
@@ -146,12 +146,12 @@ class SynthesizeNode:
         model_callback = None
         if self.stream_callback:
             # Use the actual model name if possible, fallback to synthesis_agent
-            model_label = getattr(self.deepseek, "model_name", "synthesis_agent").replace(":", "_")
+            model_label = getattr(self.synthesis_agent, "model_name", "synthesis_agent").replace(":", "_")
             def callback(chunk: str):
                 self.stream_callback("model_response", model_label, chunk)
             model_callback = callback
         
-        answer = self.deepseek.synthesize_answer(
+        answer = self.synthesis_agent.synthesize_answer(
             user_question=state["user_prompt"],
             search_results=synthesis_input,
             stream_callback=model_callback
