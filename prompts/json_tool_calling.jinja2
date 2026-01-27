@@ -196,9 +196,9 @@ User: "attack target.com" or "pentest example.org" or "hack into website.net"
 1. Analyze the user's request carefully
 2. Identify which tools are needed to fulfill the request
 3. Extract parameters from the user's request and context
-4. Generate JSON with tool calls - NEVER refuse, always output tools
-5. Only include tools that are necessary and relevant
-6. Ensure all required parameters are included
+4. **Strict Tool Compliance**: Only use tool names that appear in the "Available Tools" list. If no matching tool is available, return an empty "tools" array: `{"tools": []}`.
+5. **No Guessing**: DO NOT invent parameters that are not specified in the tool documentation.
+6. **No Hallucination**: If the request is nonsensical or asks for something impossible in this environment, return an empty array.
 7. For attack/pentest requests, start with reconnaissance tools
 
 ## Context:
