@@ -7,8 +7,17 @@ class ToolOutputParser:
     """Parser for tool execution output."""
     
     @staticmethod
+    def strip_ansi(text: str) -> str:
+        """Remove ANSI escape codes from text."""
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return ansi_escape.sub('', text)
+
+    @staticmethod
     def parse_subfinder(stdout: str) -> Dict[str, Any]:
         """Parse subfinder/amass output using robust FQDN regex."""
+        # Strip ANSI codes first for cleaner regex matching
+        stdout = ToolOutputParser.strip_ansi(stdout)
+        
         # Strict FQDN regex: allows letters, numbers, hyphens in labels, requires at least one dot
         # and excludes common process log noise like "[DNS]" or brackets.
         fqdn_pattern = re.compile(
@@ -164,12 +173,18 @@ def get_parser(tool_name: str):
     tool_name = tool_name.lower()
     
     # Subdomain discovery tools
-    if any(alias in tool_name for alias in ["subfinder", "assetfinder", "amass", "subdomain"]):
+    subdomain_kw = ["subfinder", "assetfinder", "amass", "subdomain", "finder"]
+    if any(kw in tool_name for kw in subdomain_kw):
         return ToolOutputParser.parse_subfinder
         
     # Scanning tools
-    elif any(alias in tool_name for alias in ["nmap", "masscan", "rustscan", "port_scan"]):
+    elif any(kw in tool_name for kw in ["nmap", "masscan", "rustscan", "port_scan"]):
         return ToolOutputParser.parse_nmap
+        
+    # Amass alias "mass" (handles mass without matching masscan)
+    elif "mass" in tool_name:
+        return ToolOutputParser.parse_subfinder
+        
         
     # WHOIS
     elif "whois" in tool_name:
