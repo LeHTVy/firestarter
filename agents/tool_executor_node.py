@@ -274,18 +274,28 @@ class ToolExecutorNode:
             tool_name = relevant_subtask.get("required_tools", ["port_scan"])[0]
             cmd_name = relevant_subtask.get("command", "quick")
             
+            # Use SRE optimized targets for DSQ if it's a scan task
+            dsq_targets = targets
+            if is_scan_task and target_map:
+                dsq_targets = [domains[0] for ip, domains in target_map.items()]
+                state["execution_target_map"] = target_map
+                if self.stream_callback and len(dsq_targets) < len(targets):
+                    self.stream_callback("model_response", "system", 
+                        f"🎯 SRE Optimized (DSQ): Offloading {len(dsq_targets)} unique assets instead of {len(targets)} redundant domains.")
+
             # EFFICIENCY FILTER: Skip subdomain discovery (recon) on large target lists that are already sub-assets (domains or IPs)
             discovery_tools = ["mass", "amass", "subfinder", "finder", "bbot", "theHarvester", "subdomain_discovery"]
-            if tool_name in discovery_tools and len(targets) > 10:
+            if tool_name in discovery_tools and len(dsq_targets) > 10:
                 # Use regex for more robust detection of asset types
-                is_ip_set = all(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', str(t)) for t in targets[:5])
-                is_domain_set = all(re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', str(t)) for t in targets[:5])
+                import re
+                is_ip_set = all(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', str(t)) for t in dsq_targets[:5])
+                is_domain_set = all(re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', str(t)) for t in dsq_targets[:5])
                 
                 if is_ip_set or is_domain_set:
                     asset_type = "IP addresses" if is_ip_set else "domains/subdomains"
                     if self.stream_callback:
                         self.stream_callback("model_response", "system", 
-                            f"🛡️ Intelligence Filter: Skipping redundant discovery tool '{tool_name}' on {len(targets)} {asset_type}. "
+                            f"🛡️ Intelligence Filter: Skipping redundant discovery tool '{tool_name}' on {len(dsq_targets)} {asset_type}. "
                             f"Running discovery on already-resolved assets is inefficient and typically results in sub-scanning loops.")
                     return [{
                         "tool_name": tool_name, 
@@ -295,7 +305,7 @@ class ToolExecutorNode:
 
             self.memory_manager.scanning_queue.add_targets(
                 self.memory_manager.conversation_id,
-                targets,
+                dsq_targets,
                 tool_name,
                 cmd_name
             )
@@ -376,12 +386,17 @@ class ToolExecutorNode:
             tools = subtask.get("required_tools", [])
             for tool_name in tools:
                 # Decide per tool if we use IP or Domain
-                # Only scan tools benefit from IP-based SRE optimization
+                # SRE Optimization: Scan tools benefit from IP-based deduplication,
+                # but we use the DOMAIN name for the scan if available (better for SNI/Scripts)
                 if tool_name in scan_tools and target_map:
-                    current_targets = list(target_map.keys())
+                    # Pick the first domain encountered for each unique IP
+                    current_targets = [domains[0] for ip, domains in target_map.items()]
+                    
                     if self.stream_callback and len(current_targets) < len(targets):
                         self.stream_callback("model_response", "system", 
-                            f"🎯 SRE Optimized: '{tool_name}' will run on {len(current_targets)} unique IPs instead of {len(targets)} domains.")
+                            f"🎯 SRE Optimized: '{tool_name}' will run on {len(current_targets)} unique assets instead of {len(targets)} redundant domains (IP-based deduplication).")
+                    
+                    # Store map for findings broadcast later
                     state["execution_target_map"] = target_map
                 else:
                     # Recon tools (amass, dns_enum, etc.) MUST use original domains
@@ -389,7 +404,7 @@ class ToolExecutorNode:
                 
                 if current_targets:
                     # FAN-OUT: Create a task for each target
-                    # Limit fan-out to prevent explosion
+                    # Limit fan-out to prevent explosion for standard execution
                     max_targets = current_targets[:50] 
                     for target_item in max_targets:
                         tool_tasks.append((subtask, tool_name, target_item))
@@ -575,40 +590,6 @@ Extract parameters from context and execute the tool."""
         
         return targets
 
-    def _resolve_memory_targets(self, prompt: str, targets: List[str]) -> None:
-        """Resolve targets from memory based on prompt keywords."""
-        prompt_lower = prompt.lower()
-        agent_context = self.memory_manager.session_memory.agent_context
-        
-        mappings = [
-            (["subdomain", "finding", "asset"], "subdomains"),
-            (["open port", "service"], "open_ports"), 
-            (["ip", "address"], "ips")
-        ]
-        
-        for keywords, field in mappings:
-            if any(k in prompt_lower for k in keywords):
-                data = getattr(agent_context, field, [])
-                if not data:
-                    continue
-                    
-                count = 0
-                if field == "open_ports":
-                    # Special handling for ports: get hosts
-                    hosts = set(p.get("host") for p in data if p.get("host"))
-                    for h in hosts:
-                        if h not in targets:
-                            targets.append(h)
-                            count += 1
-                else:
-                    for item in data:
-                        if isinstance(item, str) and item not in targets:
-                            targets.append(item)
-                            count += 1
-                
-                if count > 0 and self.stream_callback:
-                    self.stream_callback("model_response", "system", 
-                        f"🔄 Resolved {count} {field} from memory.")
 
     def _store_result(self, result: Dict, state: Dict) -> str:
         """Store tool result and return summary string."""

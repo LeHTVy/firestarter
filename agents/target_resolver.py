@@ -29,7 +29,13 @@ class TargetSetResolver:
         conversation_id = self.memory_manager.conversation_id
         
         # 1. Determine Scope (Root Domain)
+        # Try to get verified target from memory if root_domain is not set
         root_domain = self.memory_manager.target_domain
+        if not root_domain:
+            root_domain = self.memory_manager.get_verified_target(conversation_id=conversation_id)
+            if root_domain:
+                self.memory_manager.target_domain = root_domain
+                
         if not root_domain and initial_targets:
             root_domain = initial_targets[0] # Best guess
             
@@ -37,6 +43,8 @@ class TargetSetResolver:
         self._resolve_from_session(prompt_lower, targets)
         
         # 3. Layer 2: Postgres Findings (Historical)
+        # Always try to resolve from findings if we have a conversation_id, 
+        # even if root_domain is still None (it might be found in findings)
         self._resolve_from_findings(prompt_lower, root_domain, targets)
         
         # 4. Layer 3: Semantic Recall (VectorDB)
