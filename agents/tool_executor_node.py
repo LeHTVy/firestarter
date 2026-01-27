@@ -244,27 +244,17 @@ class ToolExecutorNode:
         # Get targets
         targets = self._extract_targets(state, target)
         
-        # SRE Optimization (Strategic Recon Expansion):
-        scan_tools = ["nmap_scan", "nmap", "ps", "port_scan", "masscan"]
-        is_scan_task = any(any(t in subtask.get("required_tools", []) for t in scan_tools) for subtask in subtasks)
-        
-        target_map = {} # IP -> [domains]
-        if is_scan_task and targets:
-            target_map = self.target_resolver.resolve_to_ips(targets)
-            if target_map:
-                effective_targets = list(target_map.keys())
-                state["execution_target_map"] = target_map
-                if self.stream_callback:
-                    self.stream_callback("model_response", "system", 
-                        f"🎯 SRE Optimized: Resolved {len(targets)} subdomains to {len(effective_targets)} unique IPs.")
-            else:
-                effective_targets = targets
-        else:
-            effective_targets = targets
-
         # Fan-out / DSQ Strategy
         # If targets > 10, offload to Durable Scanning Queue (DSQ) for persistence
+        scan_tools = ["nmap_scan", "nmap", "ps", "port_scan", "masscan"]
+        is_scan_task = any(any(t in subtask.get("required_tools", []) for t in scan_tools) for subtask in subtasks)
         use_dsq = len(targets) > 10 and is_scan_task and hasattr(self.memory_manager, 'scanning_queue')
+        
+        # SRE Optimization (Strategic Recon Expansion)
+        # Store IP mapping but don't force it globally yet
+        target_map = {} # IP -> [domains]
+        if targets:
+            target_map = self.target_resolver.resolve_to_ips(targets)
         
         if use_dsq:
             if self.stream_callback:
@@ -272,7 +262,6 @@ class ToolExecutorNode:
                     f"📦 Large target list ({len(targets)}) detected. Offloading to Durable Scanning Queue (PostgreSQL)...")
             
             # 1. Add targets to queue
-            # Prioritize scan tools for DSQ/Fan-out as they are the intended use case
             relevant_subtask = None
             for s in subtasks:
                 if any(t in s.get("required_tools", []) for t in scan_tools):
@@ -386,10 +375,22 @@ class ToolExecutorNode:
                 continue
             tools = subtask.get("required_tools", [])
             for tool_name in tools:
-                if effective_targets:
+                # Decide per tool if we use IP or Domain
+                # Only scan tools benefit from IP-based SRE optimization
+                if tool_name in scan_tools and target_map:
+                    current_targets = list(target_map.keys())
+                    if self.stream_callback and len(current_targets) < len(targets):
+                        self.stream_callback("model_response", "system", 
+                            f"🎯 SRE Optimized: '{tool_name}' will run on {len(current_targets)} unique IPs instead of {len(targets)} domains.")
+                    state["execution_target_map"] = target_map
+                else:
+                    # Recon tools (amass, dns_enum, etc.) MUST use original domains
+                    current_targets = targets
+                
+                if current_targets:
                     # FAN-OUT: Create a task for each target
                     # Limit fan-out to prevent explosion
-                    max_targets = effective_targets[:50] 
+                    max_targets = current_targets[:50] 
                     for target_item in max_targets:
                         tool_tasks.append((subtask, tool_name, target_item))
                 else:

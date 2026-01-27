@@ -1,5 +1,6 @@
 from typing import Dict, Any, List, Optional
 from websearch.searxng_client import SearxNGClient
+from websearch.serpapi_client import SerpAPIClient
 from websearch.fetcher import WebFetcher
 from websearch.ranker import NeuralRanker
 from websearch.verifier import ResultVerifier
@@ -19,6 +20,17 @@ class SearchAggregator:
             try:
                 self.searxng = SearxNGClient(base_url=searxng_url)
                 self.searxng_available = True
+            except Exception as e:
+                pass
+        
+        # Initialize SerpApi (Fallback cloud)
+        self.serpapi = None
+        self.serpapi_available = False
+        serpapi_key = kwargs.get('serpapi_key') or os.getenv('SERPAPI_API_KEY')
+        if serpapi_key:
+            try:
+                self.serpapi = SerpAPIClient(api_key=serpapi_key)
+                self.serpapi_available = True
             except Exception as e:
                 pass
 
@@ -56,11 +68,24 @@ class SearchAggregator:
             except Exception as e:
                 search_result = None
         
-        # If SearxNG failed, return error
+        # Step 1.5: Fallback to SerpApi if SearxNG failed or unavailable
+        if (not search_result or not search_result.get("success")) and self.serpapi_available and self.serpapi:
+            try:
+                search_result = self.serpapi.search(query, num_results=num_results)
+                if search_result.get("success"):
+                    search_source = "serpapi"
+            except Exception as e:
+                search_result = None
+        
+        # If both providers failed, return error
         if not search_result or not search_result.get("success"):
+            error_msg = "SearxNG and SerpApi providers not available. Please set SEARXNG_URL or SERPAPI_API_KEY."
+            if search_result and search_result.get("error"):
+                error_msg = f"Search failed: {search_result.get('error')}"
+            
             return {
                 "success": False,
-                "error": search_result.get("error", "SearxNG search failed") if search_result else "SearxNG provider not available. Please set SEARXNG_URL.",
+                "error": error_msg,
                 "query": query,
                 "results": None
             }
