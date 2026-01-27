@@ -169,7 +169,7 @@ def get_specs() -> List[ToolSpec]:
             name="bbot",
             category=ToolCategory.RECON,
             description="OSINT automation framework for subdomain discovery and scanning",
-            executable_names=["bbot"],
+            executable_names=["bbot", "bbot.py"],
             install_hint="pip install bbot",
             aliases=["bbot_scanner", "osint_scanner"],
             commands={

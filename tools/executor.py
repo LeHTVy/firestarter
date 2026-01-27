@@ -531,21 +531,20 @@ class ToolExecutor:
                          if result.get("raw_output"):
                              output = result.get("raw_output")
                              # Pretty print web_search output
-                             if tool_name == "web_search" and isinstance(result.get("results"), dict):
+                             if tool_name == "web_search" and isinstance(result.get("results"), list):
                                  try:
-                                     search_res = result.get("results", {})
                                      formatted = []
-                                     formatted.append(f"\n🔍 Search Query: {search_res.get('query', 'Unknown')}")
-                                     formatted.append(f"Found {search_res.get('total_found', 0)} results:\n")
+                                     formatted.append(f"\n🔍 Search Query: {result.get('query', 'Unknown')}")
+                                     formatted.append(f"Found {result.get('total_found', 0)} results:\n")
                                      
-                                     for i, item in enumerate(search_res.get("results", []), 1):
+                                     for i, item in enumerate(result.get("results", []), 1):
                                          formatted.append(f"{i}. [bold cyan]{item.get('title', 'No Title')}[/bold cyan]")
                                          formatted.append(f"   Link: {item.get('link', '')}")
                                          formatted.append(f"   Snippet: {item.get('snippet', '')}\n")
                                      
                                      output = "\n".join(formatted)
-                                 except Exception:
-                                     output = result.get("raw_output") # Fallback
+                                 except Exception as e:
+                                     output = f"{result.get('raw_output')}\n(Note: Formatting error: {e})" # Fallback
                              
                              stream_callback(str(output))
                          

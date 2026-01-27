@@ -9,7 +9,6 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tools.executor import get_executor
 from agents.target_resolver import TargetSetResolver
-# FeedbackLearner removed
 
 MAX_CONCURRENT_TOOLS = 5  # Maximum tools to run in parallel
 
@@ -39,9 +38,6 @@ class ToolExecutorNode:
         self.executor = get_executor()
         self.target_resolver = TargetSetResolver(memory_manager)
         
-        # Feedback tracking removed
-        
-        # Tool calling registry (optional - for semantic tool selection)
         from models.tool_calling_registry import get_tool_calling_registry
         self.tool_calling_registry = get_tool_calling_registry()
         self.tool_calling_model_name = tool_calling_model or "json_tool_calling"
@@ -574,21 +570,15 @@ Extract parameters from context and execute the tool."""
         if self.target_resolver:
             resolved = self.target_resolver.resolve_targets(state.get("user_prompt", ""), targets)
             if resolved:
-                # Filter out redundant roots if subdomains are present? 
-                # No, keep both for now, TargetSetResolver handles deduplication
                 targets = resolved
         
         return targets
-
-        
 
     def _resolve_memory_targets(self, prompt: str, targets: List[str]) -> None:
         """Resolve targets from memory based on prompt keywords."""
         prompt_lower = prompt.lower()
         agent_context = self.memory_manager.session_memory.agent_context
         
-        # Mapping: keyword -> (context_field, context_attribute)
-        # We check if keyword exists in prompt, then fetch data from context
         mappings = [
             (["subdomain", "finding", "asset"], "subdomains"),
             (["open port", "service"], "open_ports"), 
@@ -610,7 +600,6 @@ Extract parameters from context and execute the tool."""
                             targets.append(h)
                             count += 1
                 else:
-                    # Standard list of strings
                     for item in data:
                         if isinstance(item, str) and item not in targets:
                             targets.append(item)
@@ -635,7 +624,6 @@ Extract parameters from context and execute the tool."""
             execution_id=result.get("execution_id")
         )
         
-        # Update context with findings
         results = result.get("results", {})
         if isinstance(results, dict):
             findings = {}
@@ -648,7 +636,6 @@ Extract parameters from context and execute the tool."""
                         summary += f"Found {count} {key}. "
             
             if findings:
-                # Stream findings
                 if self.stream_callback:
                     for key, value in findings.items():
                         self.stream_callback("finding", "tool_executor", {
@@ -657,11 +644,8 @@ Extract parameters from context and execute the tool."""
                             "severity": "info"
                         })
 
-                # Persist to structured database (PostgreSQL findings table)
                 conversation_id = state.get("conversation_id") or state.get("session_id")
                 
-                # SRE Broadcasting: If we scanned an IP that represents multiple domains,
-                # broadcast the findings to all of them in memory.
                 target_map = state.get("execution_target_map", {})
                 actual_target = result.get("target") or state.get("target") or self._get_target(state)
                 
@@ -753,8 +737,7 @@ Extract parameters from context and execute the tool."""
             self.stream_callback("tool_output", 
                 f"{tool_name}:{command}" if command else tool_name, line)
             
-            # [TRUST FIX] Mirror to model_response for immediate visibility
-            # Use 'tool_log' type which should be rendered as a log stream
+            # Mirror to model_response for immediate visibility
             prefix = f"[{tool_name}] " 
             if line:
                  self.stream_callback("model_response", "tool_stdout", prefix + line)
