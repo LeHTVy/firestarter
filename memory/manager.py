@@ -434,16 +434,22 @@ class MemoryManager:
     
     # ==================== Agent Context Updates ====================
     
-    def update_agent_context(self, updates: Dict[str, Any]):
-        """Update agent context with new findings.
+    def update_agent_context(self, updates: Dict[str, Any], source_tool: str = "analysis", targets: Optional[List[str]] = None):
+        """Update agent context with new findings and persist to DB.
         
         Args:
             updates: Dictionary with context updates (subdomains, ports, vulns, etc.)
+            source_tool: Name of the tool providing these updates
+            targets: Optional list of target domains/IPs these findings apply to
         """
         if not self.session_memory:
             self.get_or_create_session()
         
         ctx = self.session_memory.agent_context
+        conv_id = self.conversation_id
+        
+        # Determine effective targets for persistence
+        persistence_targets = targets or [ctx.domain] if ctx.domain else [None]
         
         # Update subdomains
         if "subdomains" in updates:
@@ -497,7 +503,29 @@ class MemoryManager:
         if "topics" in updates:
             ctx.add_topics(updates["topics"])
         
-        # 🆕 PERSISTENCE FIX: Persist agent context after every update
+        # PERSISTENCE: Save individual findings to structured SQL table
+        # This allows Q&A agent and Analysis node to query them easily
+        if conv_id:
+            for target in persistence_targets:
+                for ftype in ["subdomains", "ips", "open_ports", "vulnerabilities", "technologies", "emails", "urls"]:
+                    if ftype in updates and updates[ftype]:
+                        items = updates[ftype]
+                        if not isinstance(items, list):
+                            items = [items]
+                        
+                        for item in items:
+                            try:
+                                self.conversation_store.add_finding(
+                                    conversation_id=conv_id,
+                                    finding_type=ftype,
+                                    value=str(item),
+                                    source_tool=source_tool,
+                                    target=target
+                                )
+                            except Exception as e:
+                                print(f"Error persisting finding {ftype} for {target}: {e}")
+
+        # 🆕 PERSISTENCE FIX: Persist agent context (JSON blob) after every update
         self._persist_agent_context()
     
     def get_context_summary(self) -> str:

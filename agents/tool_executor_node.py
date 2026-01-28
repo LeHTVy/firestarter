@@ -639,28 +639,13 @@ Extract parameters from context and execute the tool."""
                     broadcast_targets = list(set(broadcast_targets))
 
                 if conversation_id:
-                    for b_target in broadcast_targets:
-                        for ftype, items in findings.items():
-                            if isinstance(items, list):
-                                for item in items:
-                                    self.memory_manager.conversation_store.add_finding(
-                                        conversation_id=conversation_id,
-                                        finding_type=ftype,
-                                        value=str(item),
-                                        source_tool=result.get("tool_name", ""),
-                                        target=b_target
-                                    )
-                            else:
-                                self.memory_manager.conversation_store.add_finding(
-                                    conversation_id=conversation_id,
-                                    finding_type=ftype,
-                                    value=str(items),
-                                    source_tool=result.get("tool_name", ""),
-                                    target=b_target
-                                )
-
                     # Update session context with findings
-                    self.memory_manager.update_agent_context(findings)
+                    # Centralized persistence in update_agent_context handles individual findings saving
+                    self.memory_manager.update_agent_context(
+                        updates=findings,
+                        source_tool=result.get("tool_name", ""),
+                        targets=broadcast_targets
+                    )
                 
         return summary.strip()
     
