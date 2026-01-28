@@ -51,6 +51,17 @@ You only have access to tools in these categories:
 {% endif %}
 
 **IMPORTANT TOOL USAGE:**
+- **Command Syntax**: You can use the `tool_name:command` syntax for tools that support multiple modes.
+- **DNS Lookups**: DO NOT use `dig ANY`. Instead, use specific commands:
+    - `dns_lookup:a` for IP/host records.
+    - `dns_lookup:mx` for mail servers.
+    - `dns_lookup:ns` for name servers.
+    - `dns_lookup:txt` for text records.
+- **Port Scanning**: Choose the appropriate `nmap_scan` mode:
+    - `nmap_scan:quick` for common ports.
+    - `nmap_scan:service` for version detection.
+    - `nmap_scan:os` for OS fingerprinting (requires sudo).
+    - `nmap_scan:vuln` for vulnerability scanning.
 - For `web_search`, you MUST provide the `query` parameter. Example: `{"name": "web_search", "parameters": {"query": "current vulnerabilities in nginx"}}`
 - For all subdomain tools, use `subdomain_discovery` if available.
 
@@ -69,6 +80,9 @@ You only have access to tools in these categories:
 - Document only factual findings, DO NOT speculate or invent data
 - Analyze results carefully to find patterns based only on provided output
 - No hardcoding: if a tool returns no results, report it as "No results found" instead of guessing
+- **CRITICAL: NEVER simulate, invent, or "hallucinate" tool outputs or command executions.**
+- **CRITICAL: NEVER include markdown-formatted "Command Output" or "bash" blocks that look like tool results if you haven't received them in "Previous recon results".**
+- Your task is to PLAN or ANALYZE, not to SIMULATE a terminal.
 
 ## Output Format:
 

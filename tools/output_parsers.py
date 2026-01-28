@@ -51,6 +51,9 @@ class ToolOutputParser:
         current_host = None
         current_ip = None
         
+        # Clean output of ANSI codes
+        stdout = ToolOutputParser.strip_ansi(stdout)
+        
         lines = stdout.split('\n')
         for line in lines:
             line = line.strip()
@@ -70,20 +73,22 @@ class ToolOutputParser:
                         current_ip = last
                         current_host = last
             
-            # Detect open ports: 80/tcp open http Apache httpd 2.4.41
-            # 80/tcp open  http    Apache httpd 2.4.41 ((Ubuntu))
-            port_match = re.match(r'^(\d+)/(tcp|udp)\s+open\s+([^\s]+)(?:\s+(.*))?$', line)
+            # Detect ports: 80/tcp open http Apache httpd 2.4.41
+            # Improved regex to handle open, closed, or filtered states
+            port_match = re.match(r'^(\d+)/(tcp|udp)\s+(open|closed|filtered)\s+([^\s]+)(?:\s+(.*))?$', line)
             if port_match and current_ip:
                 port = int(port_match.group(1))
                 protocol = port_match.group(2)
-                service = port_match.group(3)
-                banner = port_match.group(4) or ""
+                state = port_match.group(3)
+                service = port_match.group(4)
+                banner = port_match.group(5) or ""
                 
                 open_ports.append({
                     "host": current_host,
                     "ip": current_ip,
                     "port": port,
                     "protocol": protocol,
+                    "state": state,
                     "service": service,
                     "version": banner.strip(),
                     "fingerprint": f"{service} {banner}".strip()

@@ -55,7 +55,79 @@
         "logs",
         "json",
         "xml"
-      ]
+      ],
+      "commands": {
+        "quick": {
+          "description": "Fast scan of common ports (skips ping)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ]
+          }
+        },
+        "service": {
+          "description": "Service version detection (skips ping)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ]
+          }
+        },
+        "comprehensive": {
+          "description": "Service detection, OS detection (requires sudo)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ]
+          }
+        },
+        "os": {
+          "description": "OS detection (requires sudo)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ]
+          }
+        },
+        "vuln": {
+          "description": "Vulnerability scan using Nmap scripts",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ]
+          }
+        }
+      }
     },
     {
       "name": "metasploit_exploit",
@@ -230,6 +302,78 @@
       },
       "risk_level": "low",
       "requires_auth": true
+    },
+    {
+      "name": "dns_lookup",
+      "description": "Perform specific DNS record lookups (A, MX, TXT, NS). Use this instead of ANY queries for reliability.",
+      "category": "recon",
+      "assigned_agents": [
+        "recon_agent"
+      ],
+      "implementation": "dig",
+      "aliases": [
+        "dig",
+        "dns_query"
+      ],
+      "commands": {
+        "a": {
+          "description": "Query A records (IPv4 address)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "domain"
+            ]
+          }
+        },
+        "mx": {
+          "description": "Query MX records (Mail servers)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "domain"
+            ]
+          }
+        },
+        "ns": {
+          "description": "Query NS records (Name servers)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "domain"
+            ]
+          }
+        },
+        "txt": {
+          "description": "Query TXT records (Text records)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "domain"
+            ]
+          }
+        }
+      },
+      "risk_level": "low"
     },
     {
       "name": "dns_enum",

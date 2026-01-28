@@ -60,6 +60,7 @@ If the retrieved results show errors (timeout, exit code != 0, or "success": fal
 2.  **State the failure**: "...but it failed due to [Error/Timeout]."
 3.  **Do not hallucinate**: Do not say "no results found" as if the tool ran successfully. Say "the tool count not complete".
 4.  **Suggest alternatives**: Recommend running with different parameters or trying a different tool.
+5.  **Distinguish System Errors**: If the context says "Error retrieving findings", this is a database or system connection error. DO NOT call it a "tool failure" - inform the user that the system is having trouble accessing the memory database.
 
 {% if retrieved_results.session_memory and retrieved_results.session_memory.agent_context %}
 ## Current Session State (RAM):
